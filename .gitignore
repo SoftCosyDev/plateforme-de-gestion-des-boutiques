@@ -1,0 +1,7 @@
+# Fichiers de verrouillage temporaires de Microsoft Office (créés à l'ouverture d'un .docx).
+~$*
+
+# Fichiers/dossiers spécifiques à l'éditeur ou à l'OS.
+.vscode/
+.DS_Store
+Thumbs.db

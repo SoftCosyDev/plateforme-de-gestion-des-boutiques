@@ -1,0 +1,16 @@
+Django==6.0.2
+djangorestframework==3.16.1
+django-axes==8.3.1
+django-cors-headers==4.9.0
+django-filter
+django-debug-toolbar==6.2.0
+drf-spectacular==0.29.0
+psycopg2-binary==2.9.11
+python-dotenv==1.0.1
+Pillow==12.2.0
+argon2-cffi==23.1.0
+# Production
+gunicorn
+whitenoise
+cloudinary
+django-cloudinary-storage
