@@ -45,6 +45,9 @@ class PayrollEntryWriteSerializer(BoutiqueScopedWriteSerializerMixin, serializer
             'status': status_for(net_pay, data['amount_paid']),
         }
 
+    # Toujours passer par _compute() plutôt que PayrollEntry.objects.create(**validated_data)
+    # directement — sinon les champs dérivés (absences, retenue, net à payer, statut) resteraient
+    # vides puisqu'ils ne sont pas dans `fields` (donc jamais dans validated_data).
     def create(self, validated_data):
         return PayrollEntry.objects.create(**self._compute(validated_data))
 

@@ -108,17 +108,17 @@ export default function ReportsPage() {
           </h3>
           <div className="grid grid-cols-2 gap-4 mb-4">
             <div className="p-3 rounded-xl bg-primary/5 border border-primary/20">
-              <p className="text-[10px] text-muted-foreground uppercase font-bold">Masse salariale</p>
+              <p className="text-[12px] text-muted-foreground uppercase font-bold">Masse salariale</p>
               <p className="text-lg font-black">{payrollTotal.toLocaleString()} FCFA</p>
             </div>
             <div className="p-3 rounded-xl bg-green-500/5 border border-green-500/20">
-              <p className="text-[10px] text-muted-foreground uppercase font-bold">Déjà payé</p>
+              <p className="text-[12px] text-muted-foreground uppercase font-bold">Déjà payé</p>
               <p className="text-lg font-black text-green-600">{payrollPaid.toLocaleString()} FCFA</p>
             </div>
           </div>
           <div className="flex items-center justify-between text-xs font-semibold text-muted-foreground">
             <span>{activeEmployeeCount} employé(s) actif(s)</span>
-            <Badge variant="outline" className="text-[10px]">{absencesCount} absence(s) · {lateCount} retard(s) ce mois</Badge>
+            <Badge variant="outline" className="text-[12px]">{absencesCount} absence(s) · {lateCount} retard(s) ce mois</Badge>
           </div>
         </Card>
       </div>

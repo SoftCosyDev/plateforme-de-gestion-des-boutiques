@@ -4,6 +4,8 @@
 import { useQuery } from '@tanstack/react-query'
 // api : instance axios centralisée.
 import api from '@/lib/api'
+// useActiveBoutiqueId : id de la boutique "en cours" pour la session (voir access.ts).
+import { useActiveBoutiqueId } from '@/lib/access'
 
 // Les 5 endpoints ci-dessous sont de purs calculs d'agrégation côté serveur — aucune conversion
 // de forme n'est nécessaire côté client au-delà du typage, mais les champs Decimal (DRF les sérialise
@@ -14,19 +16,32 @@ export interface DashboardSummary {
   totalStockValue: number
   activeAlerts: number
   totalSalesAmount: number
+  // Bénéfice — DIFFÉRENT du CA total : revenu moins coût d'achat des articles vendus (voir
+  // Backend/reports/views.py::DashboardSummaryView pour le détail du calcul et ses limites).
+  totalProfit: number
+  todaySalesAmount: number
+  todaySalesCount: number
   todayRefunds: number
 }
 
+// `boutique` en paramètre : sans lui, un SUPERADMIN/OWNER multi-boutiques verrait ses 5 agrégats
+// mélanger TOUTES ses boutiques au lieu de celle actuellement affichée à l'écran (même correctif
+// que sur les listes métier, voir queries/products.ts::useProducts). La clé de requête inclut
+// boutiqueId pour que changer de boutique déclenche un vrai refetch.
 export function useDashboardSummary() {
+  const boutiqueId = useActiveBoutiqueId()
   return useQuery({
-    queryKey: ['reports', 'summary'],
+    queryKey: ['reports', 'summary', boutiqueId],
     queryFn: async () => {
-      const { data } = await api.get('/reports/summary/')
+      const { data } = await api.get('/reports/summary/', { params: { boutique: boutiqueId ?? undefined } })
       return {
         totalProducts: data.total_products,
         totalStockValue: Number(data.total_stock_value),
         activeAlerts: data.active_alerts,
         totalSalesAmount: Number(data.total_sales_amount),
+        totalProfit: Number(data.total_profit),
+        todaySalesAmount: Number(data.today_sales_amount),
+        todaySalesCount: data.today_sales_count,
         todayRefunds: data.today_refunds,
       } as DashboardSummary
     },
@@ -40,10 +55,11 @@ export interface DashboardChartPoint {
 }
 
 export function useDashboardCharts() {
+  const boutiqueId = useActiveBoutiqueId()
   return useQuery({
-    queryKey: ['reports', 'charts'],
+    queryKey: ['reports', 'charts', boutiqueId],
     queryFn: async () => {
-      const { data } = await api.get<{ month: string; ventes: string; entrees: string }[]>('/reports/charts/')
+      const { data } = await api.get<{ month: string; ventes: string; entrees: string }[]>('/reports/charts/', { params: { boutique: boutiqueId ?? undefined } })
       return data.map(p => ({ month: p.month, ventes: Number(p.ventes), entrees: Number(p.entrees) }))
     },
   })
@@ -56,9 +72,10 @@ export interface DashboardCategorySlice {
 }
 
 export function useDashboardCategories() {
+  const boutiqueId = useActiveBoutiqueId()
   return useQuery({
-    queryKey: ['reports', 'categories'],
-    queryFn: () => api.get<DashboardCategorySlice[]>('/reports/categories/').then(res => res.data),
+    queryKey: ['reports', 'categories', boutiqueId],
+    queryFn: () => api.get<DashboardCategorySlice[]>('/reports/categories/', { params: { boutique: boutiqueId ?? undefined } }).then(res => res.data),
   })
 }
 
@@ -76,10 +93,11 @@ export interface DashboardProductPerformance {
 }
 
 export function useDashboardProductPerformance() {
+  const boutiqueId = useActiveBoutiqueId()
   return useQuery({
-    queryKey: ['reports', 'product-performance'],
+    queryKey: ['reports', 'product-performance', boutiqueId],
     queryFn: async () => {
-      const { data } = await api.get('/reports/product-performance/')
+      const { data } = await api.get('/reports/product-performance/', { params: { boutique: boutiqueId ?? undefined } })
       const mapRotation = (r: any): ProductRotation => ({
         id: r.id, name: r.name, sold: Number(r.sold), stock: Number(r.stock), rotation: Number(r.rotation),
       })
@@ -111,10 +129,11 @@ export interface DashboardRecentData {
 }
 
 export function useDashboardRecentData() {
+  const boutiqueId = useActiveBoutiqueId()
   return useQuery({
-    queryKey: ['reports', 'recent-data'],
+    queryKey: ['reports', 'recent-data', boutiqueId],
     queryFn: async () => {
-      const { data } = await api.get('/reports/recent-data/')
+      const { data } = await api.get('/reports/recent-data/', { params: { boutique: boutiqueId ?? undefined } })
       return {
         lowStock: data.low_stock.map((l: any) => ({
           product: l.product, availableQty: Number(l.available_qty), severity: l.severity, message: l.message,

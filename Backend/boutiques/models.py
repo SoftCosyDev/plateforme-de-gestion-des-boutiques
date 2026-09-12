@@ -24,6 +24,13 @@ class Boutique(models.Model):
     # Liste JSON des fonctionnalités auxquelles cette boutique a souscrit — voir schema.md pour
     # le catalogue complet des clés possibles (dashboard, products, cashier...).
     enabled_features = models.JSONField(default=list, blank=True)
+    # Liste JSON des noms d'attributs utilisés pour distinguer les variantes d'UN produit dans
+    # CETTE boutique (ex: ["Taille", "Couleur"] pour une boutique de mode, ["Format"] pour une
+    # épicerie, [] si un produit n'a jamais qu'une seule variante) — définie par le propriétaire
+    # lui-même (voir /settings), jamais figée globalement : une boutique de mode et une épicerie
+    # n'ont pas le même vocabulaire de déclinaisons. Le formulaire produit génère un champ de
+    # saisie par attribut listé ici, stocké ensuite dans Variant.attributes (voir catalog/models.py).
+    variant_attributes = models.JSONField(default=list, blank=True)
     # Abonnement actif ou non — UNIQUEMENT modifiable par un SUPERADMIN (voir
     # BoutiqueWriteSerializer.validate) : une boutique désactivée devient inaccessible à son
     # propriétaire/ses employés (toutes les pages se ferment, comme si enabled_features était

@@ -12,10 +12,10 @@ from drf_spectacular.views import SpectacularAPIView, SpectacularRedocView, Spec
 # pour chaque ViewSet enregistré ci-dessous.
 from rest_framework.routers import DefaultRouter
 
-from accounts.views import LoginView, UserViewSet
+from accounts.views import LoginView, LogoutView, PasswordResetView, SecurityQuestionLookupView, UserViewSet
 from boutiques.views import BoutiqueSettingsViewSet, BoutiqueViewSet
 from catalog.views import CategoryViewSet, ProductViewSet
-from customers.views import CustomerViewSet
+from customers.views import CustomerPaymentViewSet, CustomerViewSet
 from employees.views import AttendanceRecordViewSet, EmployeeProfileViewSet
 from inventory.views import InventoryCountViewSet, InventoryLineViewSet
 from orders.views import OrderViewSet
@@ -40,6 +40,7 @@ router.register(r'categories', CategoryViewSet, basename='category')
 router.register(r'products', ProductViewSet, basename='product')
 router.register(r'stock-movements', StockMovementViewSet, basename='stock-movement')
 router.register(r'customers', CustomerViewSet, basename='customer')
+router.register(r'customer-payments', CustomerPaymentViewSet, basename='customer-payment')
 router.register(r'sales', SaleViewSet, basename='sale')
 router.register(r'sale-lines', SaleLineViewSet, basename='sale-line')
 router.register(r'orders', OrderViewSet, basename='order')
@@ -54,6 +55,11 @@ router.register(r'inventory-lines', InventoryLineViewSet, basename='inventory-li
 urlpatterns = [
     # ── Authentification ────────────────────────────────────────────────────
     path('api/token/', LoginView.as_view(), name='api_token_auth'),
+    path('api/logout/', LogoutView.as_view(), name='api_logout'),
+    # Flux public "identifiant/mot de passe oublié" (voir accounts/views.py) : aucune
+    # authentification, protégé par son propre quota (voir settings.py, 'password_recovery').
+    path('api/password-recovery/question/', SecurityQuestionLookupView.as_view(), name='api_password_recovery_question'),
+    path('api/password-recovery/reset/', PasswordResetView.as_view(), name='api_password_recovery_reset'),
 
     # ── Interface d'administration Django ──────────────────────────────────
     path('admin/', admin.site.urls),

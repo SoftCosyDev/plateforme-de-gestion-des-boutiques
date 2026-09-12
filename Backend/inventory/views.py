@@ -27,6 +27,9 @@ class InventoryCountViewSet(FullRepresentationOnCreateMixin, BoutiqueScopedModel
     filterset_fields = ['status', 'boutique']
     ordering_fields = ['created_at']
 
+    # Sérialiseur d'écriture (à la création, pose une ligne par variante avec le stock système
+    # comme quantité attendue, voir InventoryCountWriteSerializer) vs de lecture (expose les
+    # lignes déjà comptées) — même idiome que le reste du backend.
     def get_serializer_class(self):
         if self.action == 'create':
             return InventoryCountWriteSerializer
@@ -77,6 +80,8 @@ class InventoryLineViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, mix
     # la session d'inventaire parente (même besoin que sur InventoryCountViewSet.boutique).
     filterset_fields = ['inventory_count', 'variant', 'inventory_count__boutique']
 
+    # En écriture, seule `counted_qty` est modifiable (voir InventoryLineUpdateSerializer, qui
+    # recalcule discrepancy côté serveur) — en lecture, la ligne complète avec produit/variante.
     def get_serializer_class(self):
         if self.action in ('update', 'partial_update'):
             return InventoryLineUpdateSerializer

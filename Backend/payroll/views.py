@@ -16,6 +16,8 @@ class PayrollEntryViewSet(FullRepresentationOnWriteMixin, BoutiqueScopedModelVie
     filterset_fields = ['employee', 'status', 'boutique']
     ordering_fields = ['period_start']
 
+    # Sérialiseur d'écriture (accepte les montants bruts saisis) vs de lecture (expose aussi le
+    # nom de l'employé et sa boutique, imbriqués) — même idiome que le reste du backend.
     def get_serializer_class(self):
         if self.action in ('create', 'update', 'partial_update'):
             return PayrollEntryWriteSerializer

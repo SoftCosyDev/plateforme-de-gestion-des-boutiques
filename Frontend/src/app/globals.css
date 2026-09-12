@@ -4,81 +4,113 @@
 @custom-variant dark (&:is(.dark *));
 
 :root {
-  /* Light theme — palette "épicerie" : vert frais + ambre chaleureux */
-  --background: oklch(0.99 0.006 95);
-  --foreground: oklch(0.18 0.02 145);
+  /* Light theme — palette de marque Virkas (violet -> bleu, voir components/virkas-mark.tsx et
+     l'écran /login) : remplace l'ancienne palette "épicerie" vert/ambre. Ces tokens restent le
+     DÉFAUT de la plateforme (écrans sans boutique active : login, sélection SuperAdmin/Owner,
+     création de boutique...) — dès qu'une boutique précise est affichée, lib/boutique-theme.ts
+     réécrit --primary/--accent (et leurs équivalents --sidebar-*) EN LIGNE avec les couleurs que
+     CETTE boutique a choisies, sans toucher aux autres tokens définis ici (--secondary, --muted,
+     --border, --chart-*...), qui eux restent Virkas partout. */
+  --background: oklch(0.99 0.005 290);
+  --foreground: oklch(0.2 0.03 290);
   --card: oklch(1 0 0);
-  --card-foreground: oklch(0.18 0.02 145);
+  --card-foreground: oklch(0.2 0.03 290);
   --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.18 0.02 145);
-  --primary: oklch(0.42 0.13 152);
-  --primary-foreground: oklch(0.98 0.006 95);
-  --secondary: oklch(0.72 0.16 65);
-  --secondary-foreground: oklch(0.2 0.03 65);
-  --muted: oklch(0.95 0.015 95);
-  --muted-foreground: oklch(0.5 0.02 130);
-  --accent: oklch(0.68 0.19 40);
-  --accent-foreground: oklch(0.98 0.006 95);
+  --popover-foreground: oklch(0.2 0.03 290);
+  --primary: oklch(0.54 0.25 293);
+  --primary-foreground: oklch(0.98 0.006 290);
+  --secondary: oklch(0.55 0.22 263);
+  --secondary-foreground: oklch(0.98 0.006 290);
+  --muted: oklch(0.95 0.015 290);
+  --muted-foreground: oklch(0.5 0.03 290);
+  --accent: oklch(0.93 0.035 290);
+  --accent-foreground: oklch(0.32 0.12 293);
   --destructive: oklch(0.6 0.25 27.3);
-  --destructive-foreground: oklch(0.98 0.006 95);
-  --border: oklch(0.91 0.015 95);
-  --input: oklch(0.91 0.015 95);
-  --ring: oklch(0.42 0.13 152);
-  --chart-1: oklch(0.42 0.13 152);
-  --chart-2: oklch(0.72 0.16 65);
-  --chart-3: oklch(0.68 0.19 40);
-  --chart-4: oklch(0.55 0.15 200);
-  --chart-5: oklch(0.6 0.18 100);
+  --destructive-foreground: oklch(0.98 0.006 290);
+  --border: oklch(0.9 0.02 290);
+  --input: oklch(0.9 0.02 290);
+  --ring: oklch(0.54 0.25 293);
+  --chart-1: oklch(0.54 0.25 293);
+  --chart-2: oklch(0.55 0.22 263);
+  --chart-3: oklch(0.62 0.21 260);
+  --chart-4: oklch(0.65 0.2 300);
+  --chart-5: oklch(0.7 0.15 250);
   --radius: 0.625rem;
-  --sidebar: oklch(0.97 0.012 100);
-  --sidebar-foreground: oklch(0.18 0.02 145);
-  --sidebar-primary: oklch(0.42 0.13 152);
-  --sidebar-primary-foreground: oklch(0.98 0.006 95);
-  --sidebar-accent: oklch(0.72 0.16 65);
-  --sidebar-accent-foreground: oklch(0.2 0.03 65);
-  --sidebar-border: oklch(0.91 0.015 95);
-  --sidebar-ring: oklch(0.42 0.13 152);
+  --sidebar: oklch(0.97 0.012 290);
+  --sidebar-foreground: oklch(0.2 0.03 290);
+  --sidebar-primary: oklch(0.54 0.25 293);
+  --sidebar-primary-foreground: oklch(0.98 0.006 290);
+  --sidebar-accent: oklch(0.55 0.22 263);
+  --sidebar-accent-foreground: oklch(0.98 0.006 290);
+  --sidebar-border: oklch(0.9 0.02 290);
+  --sidebar-ring: oklch(0.54 0.25 293);
 }
 
 .dark {
-  /* Dark theme */
-  --background: oklch(0.14 0.015 145);
-  --foreground: oklch(0.95 0.01 95);
-  --card: oklch(0.19 0.02 145);
-  --card-foreground: oklch(0.95 0.01 95);
-  --popover: oklch(0.19 0.02 145);
-  --popover-foreground: oklch(0.95 0.01 95);
-  --primary: oklch(0.68 0.15 152);
-  --primary-foreground: oklch(0.14 0.015 145);
-  --secondary: oklch(0.8 0.14 65);
-  --secondary-foreground: oklch(0.14 0.015 145);
-  --muted: oklch(0.32 0.015 145);
-  --muted-foreground: oklch(0.68 0.02 100);
-  --accent: oklch(0.75 0.18 40);
-  --accent-foreground: oklch(0.14 0.015 145);
+  /* Dark theme — même palette Virkas, éclaircie pour rester lisible sur fond sombre. */
+  --background: oklch(0.16 0.02 290);
+  --foreground: oklch(0.95 0.01 290);
+  --card: oklch(0.21 0.025 290);
+  --card-foreground: oklch(0.95 0.01 290);
+  --popover: oklch(0.21 0.025 290);
+  --popover-foreground: oklch(0.95 0.01 290);
+  --primary: oklch(0.68 0.22 293);
+  --primary-foreground: oklch(0.16 0.02 290);
+  --secondary: oklch(0.68 0.2 263);
+  --secondary-foreground: oklch(0.16 0.02 290);
+  --muted: oklch(0.3 0.02 290);
+  --muted-foreground: oklch(0.68 0.02 290);
+  --accent: oklch(0.35 0.08 293);
+  --accent-foreground: oklch(0.95 0.01 290);
   --destructive: oklch(0.65 0.22 27.3);
-  --destructive-foreground: oklch(0.95 0.01 95);
-  --border: oklch(0.3 0.015 145);
-  --input: oklch(0.3 0.015 145);
-  --ring: oklch(0.68 0.15 152);
-  --chart-1: oklch(0.68 0.15 152);
-  --chart-2: oklch(0.8 0.14 65);
-  --chart-3: oklch(0.75 0.18 40);
-  --chart-4: oklch(0.65 0.14 200);
-  --chart-5: oklch(0.7 0.16 100);
-  --sidebar: oklch(0.17 0.018 145);
-  --sidebar-foreground: oklch(0.95 0.01 95);
-  --sidebar-primary: oklch(0.68 0.15 152);
-  --sidebar-primary-foreground: oklch(0.14 0.015 145);
-  --sidebar-accent: oklch(0.8 0.14 65);
-  --sidebar-accent-foreground: oklch(0.14 0.015 145);
-  --sidebar-border: oklch(0.3 0.015 145);
-  --sidebar-ring: oklch(0.68 0.15 152);
+  --destructive-foreground: oklch(0.95 0.01 290);
+  --border: oklch(0.32 0.02 290);
+  --input: oklch(0.32 0.02 290);
+  --ring: oklch(0.68 0.22 293);
+  --chart-1: oklch(0.68 0.22 293);
+  --chart-2: oklch(0.68 0.2 263);
+  --chart-3: oklch(0.72 0.18 260);
+  --chart-4: oklch(0.72 0.16 300);
+  --chart-5: oklch(0.75 0.13 250);
+  --sidebar: oklch(0.18 0.025 290);
+  --sidebar-foreground: oklch(0.95 0.01 290);
+  --sidebar-primary: oklch(0.68 0.22 293);
+  --sidebar-primary-foreground: oklch(0.16 0.02 290);
+  --sidebar-accent: oklch(0.68 0.2 263);
+  --sidebar-accent-foreground: oklch(0.16 0.02 290);
+  --sidebar-border: oklch(0.32 0.02 290);
+  --sidebar-ring: oklch(0.68 0.22 293);
 }
 
 @theme inline {
-  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  /* Police demandée pour toute l'app : "Times New Roman" est une police SYSTÈME (jamais chargée
+     via next/font/google, voir app/layout.tsx où l'ancien Inter a été retiré) — Times/serif en
+     repli si elle est absente de l'appareil (Linux notamment). --font-mono reste JetBrains Mono,
+     conservée uniquement pour les usages fonctionnels (codes-barres, SKU) qui ont besoin d'une
+     chasse fixe, pas d'un choix esthétique. */
+  --font-sans: 'Times New Roman', Times, serif;
   --font-mono: var(--font-jetbrains-mono), ui-monospace, monospace;
+  /* Échelle de taille de texte agrandie d'environ 12-15% par rapport aux valeurs par défaut de
+     Tailwind (text-xs=12px, text-sm=14px, text-base=16px...) — la police d'origine se lisait trop
+     petite dans toute l'app. Complète le passage de text-[10px]/[11px]/[9px] à [12px]/[13px]/[11px]
+     fait directement dans le code (arbitrary values, non couvertes par ces tokens de thème) : voir
+     les nombreuses étiquettes/badges qui utilisent des tailles arbitraires plutôt que text-xs/sm.
+     Line-heights recalculées en dur (pas de calc() ratio) pour rester proportionnées à la
+     nouvelle taille sans devoir reproduire la formule interne de Tailwind. */
+  --text-xs: 0.8125rem;
+  --text-xs--line-height: 1.125rem;
+  --text-sm: 0.9375rem;
+  --text-sm--line-height: 1.375rem;
+  --text-base: 1.0625rem;
+  --text-base--line-height: 1.625rem;
+  --text-lg: 1.1875rem;
+  --text-lg--line-height: 1.75rem;
+  --text-xl: 1.3125rem;
+  --text-xl--line-height: 1.875rem;
+  --text-2xl: 1.625rem;
+  --text-2xl--line-height: 2rem;
+  --text-3xl: 2rem;
+  --text-3xl--line-height: 2.375rem;
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
@@ -123,5 +155,30 @@
   }
   body {
     @apply bg-background text-foreground;
+  }
+}
+
+/* Impression isolée à UN SEUL élément marqué .print-area (voir barcode-display-modal.tsx) —
+   sans ça, window.print() imprime toute la page derrière la modale (sidebar, en-tête, liste de
+   produits) en plus du code-barres, les classes Tailwind print:hidden posées sur la modale
+   elle-même ne suffisant pas à cacher le RESTE de la page qui, lui, n'en porte aucune.
+   visibility (pas display:none) : préserve le rendu des enfants de .print-area, qui redeviennent
+   visibles explicitement juste après — display:none sur un ancêtre aurait aussi caché ceux-ci. */
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  .print-area,
+  .print-area * {
+    visibility: visible;
+  }
+  /* Sort .print-area du flux normal du document (position: fixed) : sans ça, tout le contenu
+     invisible qui le précède dans le DOM (la page produits derrière la modale) réserve quand
+     même sa hauteur et repousse le code-barres sur une 2e page, voire plus, laissant une page
+     blanche avant lui. */
+  .print-area {
+    position: fixed;
+    inset: 0;
+    width: 100%;
   }
 }

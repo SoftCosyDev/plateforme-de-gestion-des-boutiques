@@ -67,6 +67,9 @@ class SaleWriteSerializer(BoutiqueScopedWriteSerializerMixin, serializers.ModelS
             raise serializers.ValidationError("Une vente doit contenir au moins une ligne.")
         return value
 
+    # Encaisse une vente comptoir complète en une seule requête : calcule les lignes, crée la
+    # vente ET ses lignes, sort le stock correspondant, et met à jour l'ardoise du client si vente
+    # à crédit — @transaction.atomic : tout ou rien, jamais une vente sans son mouvement de stock.
     @transaction.atomic
     def create(self, validated_data):
         lines_data = validated_data.pop('lines')

@@ -61,7 +61,7 @@ export default function Sidebar() {
         </div>
         <div className="min-w-0">
           <p className="font-black text-sidebar-foreground leading-tight truncate">{currentBoutique?.name || 'Chez Idrissou'}</p>
-          <p className="text-[10px] text-sidebar-foreground/60 uppercase tracking-widest truncate">{currentBoutique?.neighborhood || 'Boutique'}</p>
+          <p className="text-[12px] text-sidebar-foreground/60 uppercase tracking-widest truncate">{currentBoutique?.neighborhood || 'Boutique'}</p>
         </div>
       </div>
 
@@ -78,7 +78,7 @@ export default function Sidebar() {
           </Avatar>
           <div className="min-w-0 flex-1">
             <p className="text-sm font-bold text-sidebar-foreground truncate">{session.name}</p>
-            <p className="text-[10px] text-sidebar-foreground/60 uppercase tracking-wide font-bold">
+            <p className="text-[12px] text-sidebar-foreground/60 uppercase tracking-wide font-bold">
               {sessionRoleLabel}
             </p>
           </div>

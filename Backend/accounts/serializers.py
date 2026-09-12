@@ -42,10 +42,21 @@ class LoginSerializer(serializers.Serializer):
 
 # Sérialiseur de lecture pour "mon propre compte" — jamais utilisé pour voir un AUTRE compte.
 class UserSerializer(serializers.ModelSerializer):
+    # Jamais le PIN lui-même (ni son hash) — juste "en a-t-il configuré un", pour que le
+    # frontend sache proposer "Configurer" ou "Modifier" sur l'écran de profil.
+    has_pin = serializers.BooleanField(read_only=True)
+    # Même principe : jamais la question/réponse elles-mêmes, juste si le compte peut se servir
+    # de "identifiant/mot de passe oublié" en autonomie (voir PasswordResetView).
+    has_security_question = serializers.BooleanField(read_only=True)
+
     class Meta:
         model = User
-        fields = ['id', 'username', 'full_name', 'profile_photo', 'account_type', 'is_active']
-        # Tous les champs en lecture seule ici : la modification passe par UserMeUpdateSerializer.
+        fields = [
+            'id', 'username', 'full_name', 'profile_photo', 'account_type', 'is_active',
+            'has_pin', 'has_security_question', 'security_question',
+        ]
+        # Tous les champs en lecture seule ici : la modification passe par UserMeUpdateSerializer
+        # (nom/téléphone) ou SetSecurityQuestionSerializer (question de sécurité).
         read_only_fields = fields
 
 
@@ -114,6 +125,131 @@ class PasswordChangeSerializer(serializers.Serializer):
     def save(self, **kwargs):
         user = self.context['request'].user
         # set_password hache automatiquement la nouvelle valeur.
+        user.set_password(self.validated_data['new_password'])
+        user.save(update_fields=['password'])
+        return user
+
+
+# Configure/change le code PIN de déverrouillage — exige le VRAI mot de passe (jamais l'ancien
+# PIN, qui n'existe peut-être pas encore) : sans ça, quelqu'un profitant d'une session déjà
+# ouverte pourrait s'attribuer un code PIN à son insu et revenir déverrouiller plus tard.
+class SetPinSerializer(serializers.Serializer):
+    password = serializers.CharField(write_only=True)
+    # 4 à 6 chiffres — assez court pour se taper vite au comptoir, assez long pour ne pas se
+    # deviner en 3 essais (le débit de requêtes reste de toute façon limité, voir UserViewSet.unlock).
+    pin = serializers.RegexField(r'^\d{4,6}$', write_only=True, error_messages={
+        'invalid': 'Le code PIN doit contenir entre 4 et 6 chiffres.',
+    })
+
+    def validate_password(self, value):
+        if not self.context['request'].user.check_password(value):
+            raise serializers.ValidationError("Mot de passe incorrect.")
+        return value
+
+    def save(self, **kwargs):
+        user = self.context['request'].user
+        user.set_pin(self.validated_data['pin'])
+        user.save(update_fields=['pin_hash'])
+        return user
+
+
+# Déverrouille une session mise en veille par inactivité (voir LockOverlay côté frontend) — PAS
+# une connexion : le jeton reste le même, cette route confirme seulement "c'est toujours toi".
+# Accepte indifféremment le code PIN OU le mot de passe complet, pour ne jamais coincer un compte
+# qui n'a pas encore configuré de PIN (voir User.has_pin).
+class UnlockSerializer(serializers.Serializer):
+    pin = serializers.CharField(write_only=True)
+
+    def validate_pin(self, value):
+        user = self.context['request'].user
+        if user.check_pin(value) or user.check_password(value):
+            return value
+        raise serializers.ValidationError("Code incorrect.")
+
+
+# Configure/change la question de sécurité — exige le VRAI mot de passe, même raison que
+# SetPinSerializer : sans ça, une session déjà ouverte laissée sans surveillance permettrait à
+# n'importe qui d'imposer SA PROPRE question/réponse et de revenir plus tard voler le compte via
+# "mot de passe oublié" (voir PasswordResetView).
+class SetSecurityQuestionSerializer(serializers.Serializer):
+    password = serializers.CharField(write_only=True)
+    question = serializers.CharField(max_length=255)
+    # La réponse ne doit jamais réapparaître dans une réponse HTTP, même par erreur.
+    answer = serializers.CharField(write_only=True, min_length=2)
+
+    def validate_password(self, value):
+        if not self.context['request'].user.check_password(value):
+            raise serializers.ValidationError("Mot de passe incorrect.")
+        return value
+
+    def save(self, **kwargs):
+        user = self.context['request'].user
+        user.set_security_answer(self.validated_data['question'], self.validated_data['answer'])
+        user.save(update_fields=['security_question', 'security_answer_hash'])
+        return user
+
+
+# Étape 1 du flux public "identifiant/mot de passe oublié" (voir accounts/views.py) : retrouve
+# LA QUESTION à partir du seul identifiant, sans authentification. Message d'échec volontairement
+# générique (compte inconnu ET compte sans question configurée renvoient la même erreur) pour ne
+# pas confirmer via ce seul appel qu'un identifiant donné existe bien sur la plateforme.
+class SecurityQuestionLookupSerializer(serializers.Serializer):
+    username = serializers.CharField()
+
+    def validate(self, attrs):
+        error = serializers.ValidationError(
+            "Compte introuvable, ou aucune question de sécurité n'est configurée pour ce compte. "
+            "Contactez ton responsable pour réinitialiser ton mot de passe."
+        )
+        try:
+            user = User.objects.get(username=attrs['username'])
+        except User.DoesNotExist:
+            raise error
+        if not user.is_active or not user.has_security_question:
+            raise error
+        # Même garde qu'à la connexion (voir LoginSerializer) : un employé désactivé ou dont la
+        # boutique n'est plus active ne doit pas pouvoir relancer l'accès par ce biais non plus.
+        if user.account_type == User.AccountType.EMPLOYEE:
+            profile = getattr(user, 'employee_profile', None)
+            if profile is None or profile.status != profile.Status.ACTIF or not profile.boutique.is_active:
+                raise error
+
+        attrs['user'] = user
+        return attrs
+
+
+# Étape 2 : vérifie la réponse et pose le nouveau mot de passe, sans jamais exiger l'ancien
+# (c'est justement lui que l'utilisateur a oublié) — la question/réponse en tient lieu de preuve
+# d'identité. Revalide tout depuis zéro (username + question configurée + statut du compte),
+# jamais confiance dans un état côté frontend laissé par l'étape 1.
+class PasswordResetSerializer(serializers.Serializer):
+    username = serializers.CharField()
+    answer = serializers.CharField(write_only=True)
+    new_password = serializers.CharField(write_only=True, min_length=4)
+
+    def validate(self, attrs):
+        not_found = serializers.ValidationError(
+            "Compte introuvable, ou aucune question de sécurité n'est configurée pour ce compte."
+        )
+        try:
+            user = User.objects.get(username=attrs['username'])
+        except User.DoesNotExist:
+            raise not_found
+        if not user.is_active or not user.has_security_question:
+            raise not_found
+        if user.account_type == User.AccountType.EMPLOYEE:
+            profile = getattr(user, 'employee_profile', None)
+            if profile is None or profile.status != profile.Status.ACTIF or not profile.boutique.is_active:
+                raise not_found
+
+        if not user.check_security_answer(attrs['answer']):
+            raise serializers.ValidationError({'answer': ["Réponse incorrecte."]})
+
+        attrs['user'] = user
+        return attrs
+
+    def save(self, **kwargs):
+        user = self.validated_data['user']
         user.set_password(self.validated_data['new_password'])
         user.save(update_fields=['password'])
         return user

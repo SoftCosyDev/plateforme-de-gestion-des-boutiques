@@ -69,6 +69,11 @@ class Product(models.Model):
     icon = models.CharField(max_length=100, blank=True)
     # Emoji affiché si aucune photo n'est disponible — habitude déjà prise côté Idrissou.
     emoji = models.CharField(max_length=8, default='📦')
+    # Photo réelle du produit — optionnelle, uploadée via ProductViewSet.upload_image (jamais
+    # dans le payload JSON de création/modification, même principe que User.profile_photo et
+    # EmployeeProfile.profile_photo). Prioritaire sur `emoji` à l'affichage quand elle est présente
+    # (voir catalog/serializers.py::ProductSerializer et Frontend/src/app/(shell)/products/page.tsx).
+    image = models.ImageField(upload_to='products/', null=True, blank=True)
     # Matière/tissu — pertinent pour une boutique de mode, repris de SoftCosy.
     fabric = models.CharField(max_length=100, blank=True)
     # Liste de couleurs disponibles, au format JSON libre — repris de SoftCosy.
@@ -89,6 +94,27 @@ class Product(models.Model):
         return self.name
 
 
+# Génère un code-barres EAN-13 interne valide et prêt à imprimer, pour une variante qui n'en a
+# reçu aucun (produit "en vrac" jamais étiqueté par un fabricant) — préfixe 20, réservé par la
+# norme GS1 à un usage interne/magasin, donc jamais en collision avec un vrai code-barres scanné
+# sur un produit déjà emballé. Stocke le code COMPLET (13 chiffres, clé de contrôle incluse) —
+# indispensable pour qu'un scan du code imprimé (qui lit forcément les 13 chiffres) corresponde
+# exactement à ce qui est comparé en caisse, voir cashier/page.tsx::handleScan.
+def generate_ean13_barcode() -> str:
+    last = Variant.objects.filter(barcode__startswith='20', barcode__regex=r'^\d{13}$').order_by('id').last()
+    next_number = 1
+    if last:
+        try:
+            next_number = int(last.barcode[2:12]) + 1
+        except ValueError:
+            next_number = 1
+    payload = f'20{next_number:010d}'  # 12 chiffres : préfixe "20" + séquence sur 10 chiffres.
+    digits = [int(d) for d in payload]
+    # Algorithme standard EAN-13 : positions impaires (1-indexées) ×1, positions paires ×3.
+    checksum = (10 - (sum(digits[0::2]) + sum(digits[1::2]) * 3) % 10) % 10
+    return payload + str(checksum)
+
+
 # Une déclinaison vendable d'un produit — taille, couleur, modèle... Le STOCK et le PRIX se
 # gèrent au niveau de la variante, jamais du produit directement (voir l'app stock).
 class Variant(models.Model):
@@ -101,10 +127,6 @@ class Variant(models.Model):
     sku = models.CharField(max_length=100, blank=True)
     # Code-barres scannable en caisse — repris de SoftCosy, vit ici (pas sur Product).
     barcode = models.CharField(max_length=100, blank=True)
-    # Modèle/référence fabricant — repris de SoftCosy.
-    model = models.CharField(max_length=255, blank=True)
-    # Taille ou descriptif libre de la déclinaison (ex: "M", "42", "Rouge/Noir") — repris de SoftCosy.
-    size = models.CharField(max_length=100, blank=True)
     # Prix de vente de CETTE déclinaison précise.
     selling_price = models.DecimalField(max_digits=12, decimal_places=2)
     # Prix d'achat/coût de revient — sert à calculer le bénéfice réel.
@@ -112,7 +134,10 @@ class Variant(models.Model):
     # Seuil d'alerte de stock faible propre à cette variante — nouveau (Idrissou) : SoftCosy n'a
     # qu'un seuil global (BoutiqueSettings.low_stock_threshold), utilisé si ce champ est vide.
     low_stock_threshold = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
-    # Attributs dynamiques supplémentaires non couverts par les champs dédiés — repris de SoftCosy.
+    # Valeurs des attributs de déclinaison propres à CETTE boutique (ex: {"Taille": "M", "Couleur":
+    # "Rouge"} pour une boutique de mode, {"Format": "1kg"} pour une épicerie) — les clés possibles
+    # sont celles listées dans Boutique.variant_attributes, jamais figées globalement (voir
+    # ProductWriteSerializer.validate pour le contrôle de cohérence à l'écriture).
     attributes = models.JSONField(default=dict, blank=True)
     # Une variante inactive n'est plus vendable mais reste visible dans l'historique.
     is_active = models.BooleanField(default=True)
@@ -138,6 +163,11 @@ class Variant(models.Model):
                     next_number = 1
             # Formate sur 5 chiffres avec des zéros devant, ex: SKU-00001.
             self.sku = f'SKU-{next_number:05d}'
+        # Même logique pour le code-barres — mais à CHAQUE sauvegarde, pas seulement à la
+        # création : un produit modifié plus tard pour effacer un code-barres erroné doit lui
+        # aussi en recevoir un nouveau automatiquement, pas rester bloqué sans code scannable.
+        if not self.barcode:
+            self.barcode = generate_ean13_barcode()
         super().save(*args, **kwargs)
 
     def __str__(self):

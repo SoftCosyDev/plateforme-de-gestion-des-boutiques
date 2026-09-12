@@ -6,7 +6,7 @@ import { Card } from '@/components/ui/card' // Conteneur visuel réutilisable.
 import { Button } from '@/components/ui/button' // Bouton stylé réutilisable.
 import { Input } from '@/components/ui/input' // Champ de saisie stylé réutilisable.
 import { Badge } from '@/components/ui/badge' // Petite étiquette stylée (statut).
-import { getPrimaryVariant, useProducts } from '@/lib/queries/products' // Catalogue réel (variantes).
+import { ApiProduct, ApiVariant, searchSellableVariants, useProducts, variantLabel } from '@/lib/queries/products' // Catalogue réel (variantes).
 import { useCustomers } from '@/lib/queries/customers' // Clients réels (Phase 3, pour le rattachement optionnel).
 import {
   OrderPaymentMode, OrderStatus, useCreateOrder, useMarkOrderCancelled, useMarkOrderDelivered, useOrders,
@@ -59,23 +59,17 @@ export default function OrdersPage() {
     return phone ? customers.find(c => c.phone === phone) || null : null
   }, [customers, customerPhone])
 
-  const searchResults = useMemo(() => {
-    const term = searchTerm.trim().toLowerCase()
-    if (!term) return []
-    return products.filter(p => {
-      const barcode = getPrimaryVariant(p)?.barcode || ''
-      return p.name.toLowerCase().includes(term) || barcode.includes(term)
-    }).slice(0, 6)
-  }, [products, searchTerm])
+  // Recherche à l'échelle de LA variante (pas seulement la première) — indispensable dès qu'un
+  // produit a plusieurs déclinaisons, chacune avec son propre code-barres/prix.
+  const searchResults = useMemo(() => searchSellableVariants(products, searchTerm), [products, searchTerm])
 
-  const addToCart = (product: (typeof products)[number]) => {
-    const variant = getPrimaryVariant(product)
+  const addToCart = (product: ApiProduct, variant: ApiVariant) => {
     if (!variant) return
     setCart(prev => {
       const existing = prev.find(i => i.variantId === variant.id)
       if (existing) return prev.map(i => i.variantId === variant.id ? { ...i, quantity: i.quantity + 1 } : i)
       return [...prev, {
-        variantId: variant.id, productId: product.id, name: product.name, emoji: product.emoji,
+        variantId: variant.id, productId: product.id, name: variantLabel(product, variant), emoji: product.emoji,
         unitPrice: variant.sellingPrice, quantity: 1,
       }]
     })
@@ -177,7 +171,7 @@ export default function OrdersPage() {
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2 flex-wrap">
                 <span className="font-bold text-foreground text-sm">Commande #{o.id}</span>
-                <Badge className={`text-[9px] uppercase font-black ${STATUS_STYLES[o.status]}`}>{STATUS_LABELS[o.status]}</Badge>
+                <Badge className={`text-[11px] uppercase font-black ${STATUS_STYLES[o.status]}`}>{STATUS_LABELS[o.status]}</Badge>
               </div>
               <div className="text-xs text-muted-foreground mt-1">
                 {o.customerName} ({o.customerPhone}) — {o.lines.length} article(s)
@@ -231,7 +225,7 @@ export default function OrdersPage() {
                 </div>
               </div>
               {matchedCustomer && (
-                <Badge variant="outline" className="text-[10px]">Client existant — rattaché automatiquement</Badge>
+                <Badge variant="outline" className="text-[12px]">Client existant — rattaché automatiquement</Badge>
               )}
               <div className="space-y-2">
                 <label className="text-xs font-bold text-muted-foreground uppercase">Adresse de livraison (optionnel)</label>
@@ -263,18 +257,15 @@ export default function OrdersPage() {
                 />
                 {searchResults.length > 0 && (
                   <div className="absolute z-10 mt-1 w-full divide-y divide-border/40 border border-border/50 rounded-xl overflow-hidden bg-card shadow-lg">
-                    {searchResults.map(p => {
-                      const variant = getPrimaryVariant(p)
-                      return (
-                        <button
-                          key={p.id} type="button" onClick={() => addToCart(p)}
-                          className="w-full flex items-center justify-between gap-2 p-3 text-left text-sm hover:bg-muted transition-colors"
-                        >
-                          <span className="flex items-center gap-2 truncate"><span>{p.emoji}</span><span className="font-semibold truncate">{p.name}</span></span>
-                          <span className="text-xs font-bold text-muted-foreground shrink-0">{variant.sellingPrice.toLocaleString()} FCFA</span>
-                        </button>
-                      )
-                    })}
+                    {searchResults.map(({ product, variant, label }) => (
+                      <button
+                        key={variant.id} type="button" onClick={() => addToCart(product, variant)}
+                        className="w-full flex items-center justify-between gap-2 p-3 text-left text-sm hover:bg-muted transition-colors"
+                      >
+                        <span className="flex items-center gap-2 truncate"><span>{product.emoji}</span><span className="font-semibold truncate">{label}</span></span>
+                        <span className="text-xs font-bold text-muted-foreground shrink-0">{variant.sellingPrice.toLocaleString()} FCFA</span>
+                      </button>
+                    ))}
                   </div>
                 )}
               </div>

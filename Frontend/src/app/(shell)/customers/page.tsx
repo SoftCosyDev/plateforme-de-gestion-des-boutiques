@@ -1,12 +1,12 @@
 'use client'
 
 import React, { useMemo, useState } from 'react'
-import { Users, Plus, Search, Wallet, X, Save } from 'lucide-react'
+import { Users, Plus, Search, Wallet, X, Save, History } from 'lucide-react'
 import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
-import { ApiCustomer, useCreateCustomer, useCustomers, useRecordPayment } from '@/lib/queries/customers'
+import { ApiCustomer, useCreateCustomer, useCustomerPayments, useCustomers, useRecordPayment } from '@/lib/queries/customers'
 
 export default function CustomersPage() {
   const { data: customers = [], isLoading, isError } = useCustomers()
@@ -18,7 +18,12 @@ export default function CustomersPage() {
   const [phone, setPhone] = useState('')
   const [payTarget, setPayTarget] = useState<ApiCustomer | null>(null)
   const [payAmount, setPayAmount] = useState('')
+  // Traçabilité : historique des règlements d'UN client, affiché à la demande (voir
+  // CustomerPayment côté backend — qui a encaissé quoi, quand, jamais un simple champ modifiable).
+  const [historyTarget, setHistoryTarget] = useState<ApiCustomer | null>(null)
+  const { data: payments = [], isLoading: paymentsLoading } = useCustomerPayments(historyTarget?.id ?? null)
   const [statusFilter, setStatusFilter] = useState<'due' | 'clear'>('due')
+  const [payError, setPayError] = useState('')
 
   const filtered = useMemo(() => {
     const term = searchTerm.trim().toLowerCase()
@@ -46,12 +51,18 @@ export default function CustomersPage() {
   const handlePay = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!payTarget) return
+    setPayError('')
     const amount = Number(payAmount) || 0
     if (amount <= 0) return
-    // `balance_due` est un champ simple côté backend -> on envoie le NOUVEAU solde, pas un delta.
-    await recordPayment.mutateAsync({ id: payTarget.id, newBalance: payTarget.balanceDue - amount })
-    setPayTarget(null)
-    setPayAmount('')
+    try {
+      // Envoie le MONTANT reçu — le serveur calcule/écrit le nouveau solde lui-même et pose la
+      // ligne d'historique (voir useRecordPayment), jamais calculé/imposé depuis le client.
+      await recordPayment.mutateAsync({ id: payTarget.id, amount })
+      setPayTarget(null)
+      setPayAmount('')
+    } catch (err: any) {
+      setPayError(err?.response?.data?.amount?.[0] || 'Impossible d\'encaisser ce paiement.')
+    }
   }
 
   if (isLoading) {
@@ -94,7 +105,7 @@ export default function CustomersPage() {
             statusFilter === 'due' ? 'border-destructive bg-destructive/10 text-destructive' : 'border-border text-muted-foreground hover:bg-muted'
           }`}
         >
-          Avec ardoise <Badge variant="outline" className="text-[10px]">{withDebt.length}</Badge>
+          Avec ardoise <Badge variant="outline" className="text-[12px]">{withDebt.length}</Badge>
         </button>
         <button
           type="button"
@@ -103,7 +114,7 @@ export default function CustomersPage() {
             statusFilter === 'clear' ? 'border-primary bg-primary/10 text-primary' : 'border-border text-muted-foreground hover:bg-muted'
           }`}
         >
-          Sans ardoise <Badge variant="outline" className="text-[10px]">{noDebt.length}</Badge>
+          Sans ardoise <Badge variant="outline" className="text-[12px]">{noDebt.length}</Badge>
         </button>
       </div>
 
@@ -118,14 +129,19 @@ export default function CustomersPage() {
               <div className="text-xs text-muted-foreground font-mono">{c.phone}</div>
             </div>
             <div className="text-right shrink-0">
-              <p className="text-[10px] text-muted-foreground uppercase font-bold">Ardoise (dû)</p>
+              <p className="text-[12px] text-muted-foreground uppercase font-bold">Ardoise (dû)</p>
               <p className={`font-black ${c.balanceDue > 0 ? 'text-destructive' : 'text-green-600'}`}>
                 {c.balanceDue.toLocaleString()} FCFA
               </p>
             </div>
-            <div className="w-28 flex justify-end shrink-0">
+            <div className="flex items-center justify-end gap-2 shrink-0">
+              {/* Historique visible pour TOUS les clients, pas seulement ceux qui ont encore une
+                  ardoise en cours — un client déjà "à jour" peut très bien avoir un historique. */}
+              <Button size="icon" variant="ghost" className="h-9 w-9" title="Historique des paiements" onClick={() => setHistoryTarget(c)}>
+                <History className="w-4 h-4" />
+              </Button>
               {c.balanceDue > 0 && (
-                <Button size="sm" variant="outline" className="h-9 text-xs font-bold gap-1.5" onClick={() => setPayTarget(c)}>
+                <Button size="sm" variant="outline" className="h-9 text-xs font-bold gap-1.5" onClick={() => { setPayError(''); setPayTarget(c) }}>
                   <Wallet className="w-3.5 h-3.5" /> Encaisser
                 </Button>
               )}
@@ -180,11 +196,47 @@ export default function CustomersPage() {
                 <label className="text-xs font-bold text-muted-foreground uppercase">Montant reçu</label>
                 <Input required type="number" min="1" max={payTarget.balanceDue} value={payAmount} onChange={e => setPayAmount(e.target.value)} className="h-11" autoFocus />
               </div>
+              {payError && <p className="text-xs font-bold text-destructive bg-destructive/10 rounded-lg p-2.5">{payError}</p>}
               <div className="pt-2 flex gap-3">
                 <Button type="button" variant="outline" onClick={() => setPayTarget(null)} className="flex-1 h-11 rounded-xl font-bold">Annuler</Button>
                 <Button type="submit" className="flex-1 h-11 rounded-xl font-bold gap-2"><Wallet className="w-4 h-4" />Encaisser</Button>
               </div>
             </form>
+          </Card>
+        </div>
+      )}
+
+      {historyTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setHistoryTarget(null)} />
+          <Card className="relative w-full max-w-md shadow-2xl border-border/50 max-h-[80vh] overflow-y-auto">
+            <div className="p-6 border-b border-border/50 flex items-center justify-between">
+              <div>
+                <h2 className="text-xl font-black">Historique des paiements</h2>
+                <p className="text-xs text-muted-foreground font-medium mt-0.5">{historyTarget.name}</p>
+              </div>
+              <Button variant="ghost" size="icon" onClick={() => setHistoryTarget(null)} className="rounded-full"><X className="w-5 h-5" /></Button>
+            </div>
+            <div className="p-6 space-y-3">
+              {paymentsLoading && <p className="text-sm text-muted-foreground text-center py-4">Chargement...</p>}
+              {!paymentsLoading && payments.length === 0 && (
+                <p className="text-sm text-muted-foreground text-center py-4">Aucun paiement enregistré pour ce client.</p>
+              )}
+              {payments.map(p => (
+                <div key={p.id} className="flex items-center justify-between gap-3 p-3 rounded-xl bg-muted/30">
+                  <div className="min-w-0">
+                    <p className="font-bold text-sm">{p.amount.toLocaleString()} FCFA</p>
+                    <p className="text-[13px] text-muted-foreground">
+                      {new Date(p.createdAt).toLocaleString('fr-FR', { dateStyle: 'medium', timeStyle: 'short' })} — encaissé par {p.userName}
+                    </p>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <p className="text-[12px] text-muted-foreground uppercase font-bold">Solde après</p>
+                    <p className="text-xs font-bold">{p.balanceAfter.toLocaleString()} FCFA</p>
+                  </div>
+                </div>
+              ))}
+            </div>
           </Card>
         </div>
       )}

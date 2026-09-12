@@ -79,6 +79,9 @@ class PurchaseWriteSerializer(BoutiqueScopedWriteSerializerMixin, serializers.Mo
         validated_data['total'] = sub_total
         return validated_data
 
+    # Crée l'achat ET ses lignes en un seul appel — @transaction.atomic : si une ligne échoue
+    # (variante invalide...), l'achat lui-même n'est pas créé non plus (jamais d'achat orphelin
+    # sans aucune ligne).
     @transaction.atomic
     def create(self, validated_data):
         lines_data = validated_data.pop('lines')

@@ -1,7 +1,7 @@
 'use client' // Onglet interactif (formulaire, filtre local) — jamais rendu côté serveur.
 
 import React, { useMemo, useState } from 'react' // React + hooks d'état/mémorisation.
-import { Plus, Search, Edit2, Trash2, X, Save, Phone } from 'lucide-react' // Icônes.
+import { Plus, Search, Edit2, Trash2, X, Save, Phone, Camera } from 'lucide-react' // Icônes.
 import { Card } from '@/components/ui/card' // Conteneur visuel réutilisable.
 import { Button } from '@/components/ui/button' // Bouton stylé réutilisable.
 import { Input } from '@/components/ui/input' // Champ de saisie stylé réutilisable.
@@ -14,7 +14,8 @@ import { initials } from '@/lib/utils' // Repli "initiales" quand aucune photo d
 import { useActiveBoutiqueId } from '@/lib/access' // Boutique en cours (pour filtrer les fonctionnalités activées).
 import { useBoutique } from '@/lib/queries/boutiques' // Relit la boutique en direct (enabled_features).
 import {
-  ApiEmployee, EmployeeInput, EmployeeStatus, useCreateEmployee, useDeleteEmployee, useEmployees, useUpdateEmployee,
+  ApiEmployee, EmployeeInput, EmployeeStatus,
+  useCreateEmployee, useDeleteEmployee, useEmployees, useUpdateEmployee, useUploadEmployeePhoto,
 } from '@/lib/queries/employees' // Couche de données réelle.
 
 // Formulaire vide par défaut — rôle 'staff' (le plus restrictif) comme point de départ.
@@ -33,6 +34,7 @@ export default function EmployeesTab() {
   const createEmployee = useCreateEmployee()
   const updateEmployee = useUpdateEmployee()
   const deleteEmployee = useDeleteEmployee()
+  const uploadPhoto = useUploadEmployeePhoto()
   // Une checkbox n'a de sens que si la BOUTIQUE elle-même a activé cette fonctionnalité —
   // rattache concrètement ce formulaire au modèle de permission à deux niveaux de la Phase 1.
   const boutiqueId = useActiveBoutiqueId()
@@ -48,6 +50,12 @@ export default function EmployeesTab() {
   const [form, setForm] = useState<EmployeeInput>(EMPTY_FORM)
   const [saving, setSaving] = useState(false)
   const [formError, setFormError] = useState<string | null>(null)
+  // Photo choisie dans le formulaire — upload réel différé jusqu'à l'enregistrement (voir
+  // handleSubmit) : à la création, l'employé n'a pas encore d'id tant que la 1re requête n'a
+  // pas répondu. `photoPreview` affiche un aperçu immédiat (URL locale blob://, jamais envoyée
+  // telle quelle) le temps que l'upload réel se termine.
+  const [photoFile, setPhotoFile] = useState<File | null>(null)
+  const [photoPreview, setPhotoPreview] = useState<string | null>(null)
 
   const filtered = employees.filter(e => {
     const term = searchTerm.trim().toLowerCase()
@@ -59,6 +67,8 @@ export default function EmployeesTab() {
     // Gabarit du rôle par défaut ('staff'), déjà filtré aux fonctionnalités de CETTE boutique —
     // jamais le gabarit brut (voir le commentaire sur EMPTY_FORM).
     setForm({ ...EMPTY_FORM, allowedPages: DEFAULT_PAGES_BY_ROLE.staff.filter(key => availablePages.some(p => p.id === key)) })
+    setPhotoFile(null)
+    setPhotoPreview(null)
     setFormError(null)
     setIsModalOpen(true)
   }
@@ -70,19 +80,36 @@ export default function EmployeesTab() {
       hireDate: e.hireDate || '', baseSalary: e.baseSalary, status: e.status,
       accessRole: e.accessRole, allowedPages: e.allowedPages,
     })
+    setPhotoFile(null)
+    setPhotoPreview(e.profilePhoto)
     setFormError(null)
     setIsModalOpen(true)
   }
 
-  const closeModal = () => { setIsModalOpen(false); setEditing(null); setForm(EMPTY_FORM) }
+  const closeModal = () => { setIsModalOpen(false); setEditing(null); setForm(EMPTY_FORM); setPhotoFile(null); setPhotoPreview(null) }
+
+  // Aperçu immédiat (blob:// local) — jamais envoyé tel quel, juste affiché en attendant l'upload
+  // réel après l'enregistrement (voir handleSubmit) — même principe que côté SoftCosy.
+  const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setPhotoFile(file)
+    setPhotoPreview(URL.createObjectURL(file))
+  }
 
   const handleSubmit = async (ev: React.FormEvent) => {
     ev.preventDefault()
     setSaving(true)
     setFormError(null)
     try {
-      if (editing) await updateEmployee.mutateAsync({ id: editing.id, input: form })
-      else await createEmployee.mutateAsync(form)
+      const result = editing
+        ? await updateEmployee.mutateAsync({ id: editing.id, input: form })
+        : await createEmployee.mutateAsync(form)
+      // Upload réel seulement maintenant : à la création, c'est le tout premier moment où
+      // l'employé a un id — impossible avant que cette requête ne réponde.
+      if (photoFile) {
+        await uploadPhoto.mutateAsync({ id: result.id, file: photoFile })
+      }
       closeModal()
     } catch (err: any) {
       setFormError(err?.response?.data?.username?.[0] || err?.response?.data?.detail || "Impossible d'enregistrer cet employé.")
@@ -119,10 +146,12 @@ export default function EmployeesTab() {
     <div className="space-y-6">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <p className="text-sm font-medium text-muted-foreground">{employees.length} employé(s)</p>
-        <div className="flex gap-3">
+        {/* flex-col sur mobile : la recherche à largeur fixe (w-56) + le bouton ne tenaient
+            jamais côte à côte sur un petit écran, le bouton débordait hors de l'écran. */}
+        <div className="flex flex-col sm:flex-row gap-3">
           <div className="relative">
             <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-            <Input placeholder="Rechercher..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="pl-10 h-11 rounded-xl w-56" />
+            <Input placeholder="Rechercher..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="pl-10 h-11 rounded-xl w-full sm:w-56" />
           </div>
           <Button onClick={openCreate} className="rounded-xl px-5 h-11 gap-2 font-bold shrink-0">
             <Plus className="w-4 h-4" /> Nouvel employé
@@ -140,17 +169,17 @@ export default function EmployeesTab() {
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2 flex-wrap">
                 <span className="font-bold text-foreground text-sm truncate">{e.fullName}</span>
-                <Badge variant="outline" className="text-[9px] font-bold shrink-0">{e.role || ACCESS_ROLE_LABELS[e.accessRole]}</Badge>
+                <Badge variant="outline" className="text-[11px] font-bold shrink-0">{e.role || ACCESS_ROLE_LABELS[e.accessRole]}</Badge>
               </div>
               <div className="flex items-center gap-1.5 mt-1 text-xs text-muted-foreground">
                 <Phone className="w-3 h-3" /> {e.phone}
               </div>
             </div>
             <div className="text-right shrink-0 hidden sm:block w-32">
-              <p className="text-[10px] text-muted-foreground uppercase font-bold">Salaire de base</p>
+              <p className="text-[12px] text-muted-foreground uppercase font-bold">Salaire de base</p>
               <p className="font-bold text-sm">{e.baseSalary.toLocaleString()} FCFA</p>
             </div>
-            <Badge className={`shrink-0 text-[9px] uppercase font-black ${e.status === 'actif' ? 'bg-green-100 text-green-700 hover:bg-green-100' : 'bg-muted text-muted-foreground hover:bg-muted'}`}>
+            <Badge className={`shrink-0 text-[11px] uppercase font-black ${e.status === 'actif' ? 'bg-green-100 text-green-700 hover:bg-green-100' : 'bg-muted text-muted-foreground hover:bg-muted'}`}>
               {e.status === 'actif' ? 'Actif' : 'Inactif'}
             </Badge>
             <div className="flex items-center gap-1 shrink-0">
@@ -180,6 +209,23 @@ export default function EmployeesTab() {
               <Button variant="ghost" size="icon" onClick={closeModal} className="rounded-full"><X className="w-5 h-5" /></Button>
             </div>
             <form onSubmit={handleSubmit} className="p-6 space-y-4">
+              <div className="flex items-center gap-4">
+                <div className="relative shrink-0">
+                  <Avatar className="size-16">
+                    <AvatarImage src={photoPreview ?? undefined} alt={form.fullName || 'Photo'} />
+                    <AvatarFallback className="text-lg font-bold">{initials(form.fullName || '?')}</AvatarFallback>
+                  </Avatar>
+                  <label
+                    htmlFor="employee-photo-input"
+                    className="absolute -bottom-1 -right-1 w-7 h-7 rounded-full bg-primary text-primary-foreground flex items-center justify-center cursor-pointer border-2 border-card"
+                    title="Changer la photo"
+                  >
+                    <Camera className="w-3.5 h-3.5" />
+                  </label>
+                  <input id="employee-photo-input" type="file" accept="image/*" className="hidden" onChange={handlePhotoChange} />
+                </div>
+                <p className="text-[13px] text-muted-foreground">Photo de profil (optionnelle) — clique sur l&apos;icône pour en choisir une.</p>
+              </div>
               <div className="space-y-2">
                 <label className="text-xs font-bold text-muted-foreground uppercase">Nom complet</label>
                 <Input required value={form.fullName} onChange={e => setForm({ ...form, fullName: e.target.value })} placeholder="Ex: Kossi Mensah" className="h-11" />
@@ -230,7 +276,7 @@ export default function EmployeesTab() {
 
               <div className="space-y-2 pt-2 border-t border-border/40">
                 <label className="text-xs font-bold text-muted-foreground uppercase">Pages autorisées</label>
-                <p className="text-[11px] text-muted-foreground">
+                <p className="text-[13px] text-muted-foreground">
                   Limité à ce que cette boutique a elle-même activé — modifiable dans Réglages.
                 </p>
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 pt-1">

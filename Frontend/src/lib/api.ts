@@ -2,6 +2,7 @@
 // ────────────────────────────────────────────────
 
 import axios from 'axios'
+import { LOCK_KEY, SESSION_KEY, TOKEN_KEY } from './auth-storage'
 
 const api = axios.create({
   baseURL: process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000/api',
@@ -13,7 +14,7 @@ const api = axios.create({
 // Ajoute le token dans les headers si présent.
 api.interceptors.request.use(config => {
   if (typeof window !== 'undefined') {
-    const token = localStorage.getItem('authToken')
+    const token = localStorage.getItem(TOKEN_KEY)
     // Ne pas envoyer le token sur l'endpoint de connexion lui-même.
     if (token && !config.url?.includes('/token/')) {
       config.headers.Authorization = `Token ${token}`
@@ -22,12 +23,19 @@ api.interceptors.request.use(config => {
   return config
 })
 
-// 401 -> déconnexion automatique (token expiré/révoqué côté serveur).
+// 401 -> déconnexion automatique (token expiré/révoqué côté serveur, ex: quelqu'un s'est
+// déconnecté ailleurs — un seul jeton par compte, voir accounts/views.py::LogoutView).
 api.interceptors.response.use(
   response => response,
   error => {
     if (error.response?.status === 401 && typeof window !== 'undefined') {
-      localStorage.removeItem('authToken')
+      // IMPORTANT : nettoie TOUT l'état d'authentification local, pas seulement le jeton — sans
+      // ça, SESSION_KEY reste présent après le rechargement, /login voit une session "valide"
+      // et redirige aussitôt vers /admin, qui échoue à nouveau (même jeton absent), qui
+      // redirige de nouveau vers /login... une boucle infinie de rechargements complets.
+      localStorage.removeItem(TOKEN_KEY)
+      localStorage.removeItem(SESSION_KEY)
+      localStorage.removeItem(LOCK_KEY)
       if (window.location.pathname !== '/login') {
         window.location.href = '/login'
       }

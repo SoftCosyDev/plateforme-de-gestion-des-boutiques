@@ -6,7 +6,7 @@ import { Card } from '@/components/ui/card' // Conteneur visuel réutilisable.
 import { Button } from '@/components/ui/button' // Bouton stylé réutilisable.
 import { Input } from '@/components/ui/input' // Champ de saisie stylé réutilisable.
 import { Badge } from '@/components/ui/badge' // Petite étiquette stylée (statut).
-import { getPrimaryVariant, useProducts } from '@/lib/queries/products' // Catalogue réel (variantes).
+import { ApiProduct, ApiVariant, searchSellableVariants, useProducts, variantLabel } from '@/lib/queries/products' // Catalogue réel (variantes).
 import { useSuppliers } from '@/lib/queries/suppliers' // Fournisseurs réels (Phase 5).
 import { useCreatePurchase, useMarkPurchaseReceived, usePurchases } from '@/lib/queries/purchases' // Achats réels.
 
@@ -37,25 +37,19 @@ export default function PurchasesPage() {
 
   const total = cart.reduce((sum, item) => sum + item.unitCost * item.quantity, 0)
 
-  const searchResults = useMemo(() => {
-    const term = searchTerm.trim().toLowerCase()
-    if (!term) return []
-    return products.filter(p => {
-      const barcode = getPrimaryVariant(p)?.barcode || ''
-      return p.name.toLowerCase().includes(term) || barcode.includes(term)
-    }).slice(0, 6)
-  }, [products, searchTerm])
+  // Recherche à l'échelle de LA variante (pas seulement la première) — indispensable dès qu'un
+  // produit a plusieurs déclinaisons, chacune avec son propre code-barres/coût.
+  const searchResults = useMemo(() => searchSellableVariants(products, searchTerm), [products, searchTerm])
 
   const supplierName = (id: number | null) => suppliers.find(s => s.id === id)?.name || 'Sans fournisseur'
 
-  const addToCart = (product: (typeof products)[number]) => {
-    const variant = getPrimaryVariant(product)
+  const addToCart = (product: ApiProduct, variant: ApiVariant) => {
     if (!variant) return
     setCart(prev => {
       const existing = prev.find(i => i.variantId === variant.id)
       if (existing) return prev.map(i => i.variantId === variant.id ? { ...i, quantity: i.quantity + 1 } : i)
       return [...prev, {
-        variantId: variant.id, productId: product.id, name: product.name, emoji: product.emoji,
+        variantId: variant.id, productId: product.id, name: variantLabel(product, variant), emoji: product.emoji,
         // Prix d'achat catalogue comme point de départ — modifiable ligne par ligne ensuite.
         unitCost: variant.costPrice, quantity: 1,
       }]
@@ -130,7 +124,7 @@ export default function PurchasesPage() {
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2 flex-wrap">
                 <span className="font-bold text-foreground text-sm">{p.reference}</span>
-                <Badge className={`text-[9px] uppercase font-black ${p.status === 'RECU' ? 'bg-green-100 text-green-700 hover:bg-green-100' : 'bg-orange-100 text-orange-700 hover:bg-orange-100'}`}>
+                <Badge className={`text-[11px] uppercase font-black ${p.status === 'RECU' ? 'bg-green-100 text-green-700 hover:bg-green-100' : 'bg-orange-100 text-orange-700 hover:bg-orange-100'}`}>
                   {p.status === 'RECU' ? 'Reçu' : p.status || 'En attente'}
                 </Badge>
               </div>
@@ -190,18 +184,15 @@ export default function PurchasesPage() {
                 />
                 {searchResults.length > 0 && (
                   <div className="absolute z-10 mt-1 w-full divide-y divide-border/40 border border-border/50 rounded-xl overflow-hidden bg-card shadow-lg">
-                    {searchResults.map(p => {
-                      const variant = getPrimaryVariant(p)
-                      return (
-                        <button
-                          key={p.id} type="button" onClick={() => addToCart(p)}
-                          className="w-full flex items-center justify-between gap-2 p-3 text-left text-sm hover:bg-muted transition-colors"
-                        >
-                          <span className="flex items-center gap-2 truncate"><span>{p.emoji}</span><span className="font-semibold truncate">{p.name}</span></span>
-                          <span className="text-xs font-bold text-muted-foreground shrink-0">Coût {variant.costPrice.toLocaleString()} FCFA</span>
-                        </button>
-                      )
-                    })}
+                    {searchResults.map(({ product, variant, label }) => (
+                      <button
+                        key={variant.id} type="button" onClick={() => addToCart(product, variant)}
+                        className="w-full flex items-center justify-between gap-2 p-3 text-left text-sm hover:bg-muted transition-colors"
+                      >
+                        <span className="flex items-center gap-2 truncate"><span>{product.emoji}</span><span className="font-semibold truncate">{label}</span></span>
+                        <span className="text-xs font-bold text-muted-foreground shrink-0">Coût {variant.costPrice.toLocaleString()} FCFA</span>
+                      </button>
+                    ))}
                   </div>
                 )}
               </div>
@@ -215,7 +206,7 @@ export default function PurchasesPage() {
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-semibold truncate">{item.name}</p>
                       <div className="flex items-center gap-1 mt-1">
-                        <span className="text-[10px] text-muted-foreground uppercase font-bold">Coût unit.</span>
+                        <span className="text-[12px] text-muted-foreground uppercase font-bold">Coût unit.</span>
                         <Input
                           type="number" min="0" value={item.unitCost}
                           onChange={e => updateCost(item.variantId, Number(e.target.value) || 0)}

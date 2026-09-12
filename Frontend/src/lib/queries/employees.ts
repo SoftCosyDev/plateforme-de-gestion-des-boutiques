@@ -135,3 +135,18 @@ export function useDeleteEmployee() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['employees'] }),
   })
 }
+
+// Photo de profil de l'EMPLOYÉ, définie par son gérant/propriétaire — distincte de la photo que
+// CHACUN peut définir pour son propre compte (voir queries/users.ts::useUploadMyPhoto). Toujours
+// appelée sur un employé DÉJÀ existant (jamais à la création, le formulaire n'a pas encore d'id).
+export function useUploadEmployeePhoto() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ id, file }: { id: number; file: File }) => {
+      const formData = new FormData()
+      formData.append('photo', file)
+      return mapEmployee((await api.post<RawEmployeeProfile>(`/employees/${id}/upload-photo/`, formData)).data)
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['employees'] }),
+  })
+}

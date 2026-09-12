@@ -4,6 +4,9 @@ from django.db import models
 # BaseUserManager : base pour écrire le gestionnaire (create_user/create_superuser) de ce modèle.
 # PermissionsMixin : ajoute is_superuser, groups, user_permissions (système de permissions Django).
 from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, PermissionsMixin
+# make_password/check_password : même mécanisme de hachage que le mot de passe, réutilisé pour
+# le code PIN (voir User.pin_hash) — mais dans un champ séparé, indépendant du mot de passe.
+from django.contrib.auth.hashers import check_password, make_password
 
 
 # Gestionnaire personnalisé : Django a besoin de create_user()/create_superuser() pour un User custom.
@@ -62,6 +65,21 @@ class User(AbstractBaseUser, PermissionsMixin):
     is_active = models.BooleanField(default=True)
     # Accès à l'interface d'administration Django (distinct de account_type).
     is_staff = models.BooleanField(default=False)
+    # Code PIN court (4 à 6 chiffres), choisi par l'utilisateur lui-même — sert UNIQUEMENT à
+    # redéverrouiller une session déjà ouverte, mise en veille après 30 min d'inactivité (voir
+    # LockOverlay côté frontend), jamais à se CONNECTER depuis zéro (voir LoginSerializer, qui ne
+    # l'utilise jamais). Haché comme le mot de passe mais dans un champ séparé : changer l'un
+    # n'affecte jamais l'autre. Vide tant que non configuré — dans ce cas le déverrouillage
+    # retombe sur le mot de passe complet (voir UnlockSerializer), pour ne jamais bloquer personne.
+    pin_hash = models.CharField(max_length=128, blank=True)
+
+    # Question de sécurité choisie par l'utilisateur (texte libre, ex: "Nom de mon premier
+    # animal ?") — utilisée UNIQUEMENT par le flux "identifiant/mot de passe oublié" public
+    # (voir PasswordResetView), jamais ailleurs. Vide tant que non configurée : dans ce cas la
+    # récupération autonome n'est pas possible pour ce compte, voir SecurityQuestionLookupView.
+    security_question = models.CharField(max_length=255, blank=True)
+    # Réponse hachée (jamais en clair) comme le mot de passe/PIN, mais dans un champ séparé.
+    security_answer_hash = models.CharField(max_length=128, blank=True)
 
     # Branche le gestionnaire personnalisé défini plus haut.
     objects = UserManager()
@@ -78,3 +96,42 @@ class User(AbstractBaseUser, PermissionsMixin):
     # Représentation lisible dans l'admin Django et les logs.
     def __str__(self):
         return f'{self.full_name} ({self.username})'
+
+    # Enregistre un nouveau code PIN (toujours haché, jamais stocké en clair) — n'appelle jamais
+    # .save() lui-même, à l'appelant de le faire (voir SetPinSerializer.save()).
+    def set_pin(self, raw_pin):
+        self.pin_hash = make_password(raw_pin)
+
+    # Compare au PIN haché stocké — renvoie toujours False tant qu'aucun PIN n'a été configuré.
+    def check_pin(self, raw_pin):
+        if not self.pin_hash:
+            return False
+        return check_password(raw_pin, self.pin_hash)
+
+    @property
+    def has_pin(self):
+        return bool(self.pin_hash)
+
+    # Normalise la réponse (espaces + casse) avant hachage/comparaison — sans ça, une réponse
+    # tapée "Paris" à la configuration puis "paris " à la récupération serait jugée incorrecte
+    # pour une différence purement cosmétique, sans rapport avec la sécurité de la réponse.
+    @staticmethod
+    def _normalize_security_answer(raw_answer):
+        return raw_answer.strip().lower()
+
+    # Enregistre la question + la réponse hachée — n'appelle jamais .save() lui-même, à
+    # l'appelant de le faire (voir SetSecurityQuestionSerializer.save()).
+    def set_security_answer(self, question, raw_answer):
+        self.security_question = question
+        self.security_answer_hash = make_password(self._normalize_security_answer(raw_answer))
+
+    # Compare à la réponse hachée stockée — renvoie toujours False tant qu'aucune question n'a
+    # été configurée.
+    def check_security_answer(self, raw_answer):
+        if not self.security_answer_hash:
+            return False
+        return check_password(self._normalize_security_answer(raw_answer), self.security_answer_hash)
+
+    @property
+    def has_security_question(self):
+        return bool(self.security_question and self.security_answer_hash)

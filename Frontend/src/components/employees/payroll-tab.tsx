@@ -114,7 +114,7 @@ export default function PayrollTab() {
               statusFilter === t.id ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'
             }`}
           >
-            {t.label} <Badge variant="outline" className="text-[10px]">{grouped[t.id].length}</Badge>
+            {t.label} <Badge variant="outline" className="text-[12px]">{grouped[t.id].length}</Badge>
           </button>
         ))}
       </div>
@@ -138,11 +138,11 @@ export default function PayrollTab() {
                   <p className="text-xs text-muted-foreground">{p.periodLabel} · {emp?.role}</p>
                 </div>
                 <div className="text-right shrink-0 hidden sm:block w-28">
-                  <p className="text-[10px] text-muted-foreground uppercase font-bold">Net à payer</p>
+                  <p className="text-[12px] text-muted-foreground uppercase font-bold">Net à payer</p>
                   <p className="font-black text-sm">{p.netPay.toLocaleString()} FCFA</p>
                 </div>
                 <div className="text-right shrink-0 hidden md:block w-28">
-                  <p className="text-[10px] text-muted-foreground uppercase font-bold">Reste</p>
+                  <p className="text-[12px] text-muted-foreground uppercase font-bold">Reste</p>
                   <p className={`font-black text-sm ${reste > 0 ? 'text-destructive' : 'text-green-600'}`}>{reste.toLocaleString()} FCFA</p>
                 </div>
                 {p.status !== 'paye' && (
@@ -160,32 +160,32 @@ export default function PayrollTab() {
                 <div className="px-4 pb-4 bg-muted/10">
                   <div className="rounded-xl border border-border/50 bg-background/60 p-4 grid grid-cols-2 sm:grid-cols-4 gap-4 text-sm">
                     <div>
-                      <p className="text-[10px] text-muted-foreground uppercase font-bold">Salaire de base</p>
+                      <p className="text-[12px] text-muted-foreground uppercase font-bold">Salaire de base</p>
                       <p className="font-bold">{p.baseSalary.toLocaleString()} FCFA</p>
                     </div>
                     <div>
-                      <p className="text-[10px] text-muted-foreground uppercase font-bold">Absences non just.</p>
+                      <p className="text-[12px] text-muted-foreground uppercase font-bold">Absences non just.</p>
                       <p className="font-bold">{p.unjustifiedAbsences}</p>
                     </div>
                     <div>
-                      <p className="text-[10px] text-muted-foreground uppercase font-bold">Retards</p>
+                      <p className="text-[12px] text-muted-foreground uppercase font-bold">Retards</p>
                       <p className="font-bold">{p.lateCount}</p>
                     </div>
                     <div>
-                      <p className="text-[10px] text-muted-foreground uppercase font-bold">Retenue auto</p>
+                      <p className="text-[12px] text-muted-foreground uppercase font-bold">Retenue auto</p>
                       <p className="font-bold text-destructive">-{p.deduction.toLocaleString()} FCFA</p>
                     </div>
                     <div>
-                      <p className="text-[10px] text-muted-foreground uppercase font-bold">Prime</p>
+                      <p className="text-[12px] text-muted-foreground uppercase font-bold">Prime</p>
                       <p className="font-bold text-green-600">+{p.bonus.toLocaleString()} FCFA</p>
                     </div>
                     <div>
-                      <p className="text-[10px] text-muted-foreground uppercase font-bold">Déjà payé</p>
+                      <p className="text-[12px] text-muted-foreground uppercase font-bold">Déjà payé</p>
                       <p className="font-bold">{p.amountPaid.toLocaleString()} FCFA</p>
                     </div>
                     <div className="col-span-2">
-                      <p className="text-[10px] text-muted-foreground uppercase font-bold">Statut</p>
-                      <Badge className={`text-[9px] uppercase font-black ${
+                      <p className="text-[12px] text-muted-foreground uppercase font-bold">Statut</p>
+                      <Badge className={`text-[11px] uppercase font-black ${
                         p.status === 'paye' ? 'bg-green-100 text-green-700 hover:bg-green-100' :
                         p.status === 'partiel' ? 'bg-orange-100 text-orange-700 hover:bg-orange-100' :
                         'bg-red-100 text-red-700 hover:bg-red-100'

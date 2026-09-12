@@ -28,6 +28,10 @@ export interface ApiBoutique {
   theme_accent_color: string // Couleur d'accent du thème (hex).
   business_type: string // Type d'activité — texte libre, purement informatif.
   enabled_features: FeatureKey[] // Fonctionnalités auxquelles cette boutique a souscrit.
+  // Noms des attributs utilisés pour distinguer les variantes d'un produit dans CETTE boutique
+  // (ex: ["Taille","Couleur"] pour une boutique de mode, ["Format"] pour une épicerie) — définis
+  // librement par le propriétaire (voir /settings), jamais figés globalement pour la plateforme.
+  variant_attributes: string[]
   // Abonnement actif ou non — une boutique désactivée n'a plus AUCUNE page accessible pour son
   // propriétaire/ses employés (voir access.ts), mais ses données restent intactes. Seul un
   // SUPERADMIN peut faire varier ce champ (voir BoutiqueWriteSerializer.validate côté backend).
@@ -46,6 +50,7 @@ export interface BoutiqueInput {
   theme_accent_color: string
   business_type: string
   enabled_features: FeatureKey[]
+  variant_attributes?: string[] // Facultatif : librement modifiable par l'Owner lui-même.
 }
 
 // Liste toutes les boutiques visibles pour la session en cours — cloisonnement déjà appliqué
@@ -100,6 +105,21 @@ export function useSetBoutiqueActive() {
   return useMutation({
     mutationFn: ({ id, isActive }: { id: number; isActive: boolean }) =>
       api.patch<ApiBoutique>(`/boutiques/${id}/`, { is_active: isActive }).then(res => res.data),
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['boutiques'] })
+      queryClient.invalidateQueries({ queryKey: ['boutique', variables.id] })
+    },
+  })
+}
+
+// Modifie UNIQUEMENT `variant_attributes` — action isolée (comme useSetBoutiqueActive) plutôt que
+// de passer par useUpdateBoutique, qui exige tous les champs du formulaire complet d'admin alors
+// que ceci se pilote depuis /settings, un écran totalement séparé.
+export function useUpdateVariantAttributes() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, variantAttributes }: { id: number; variantAttributes: string[] }) =>
+      api.patch<ApiBoutique>(`/boutiques/${id}/`, { variant_attributes: variantAttributes }).then(res => res.data),
     onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: ['boutiques'] })
       queryClient.invalidateQueries({ queryKey: ['boutique', variables.id] })

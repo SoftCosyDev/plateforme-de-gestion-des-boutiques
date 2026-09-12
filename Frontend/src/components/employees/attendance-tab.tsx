@@ -89,11 +89,11 @@ export default function AttendanceTab() {
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2 flex-wrap">
                 <span className="font-bold text-sm">{employeeName(r.employee)}</span>
-                <Badge className={`text-[9px] uppercase font-black ${r.type === 'retard' ? 'bg-orange-100 text-orange-700 hover:bg-orange-100' : 'bg-red-100 text-red-700 hover:bg-red-100'}`}>
+                <Badge className={`text-[11px] uppercase font-black ${r.type === 'retard' ? 'bg-orange-100 text-orange-700 hover:bg-orange-100' : 'bg-red-100 text-red-700 hover:bg-red-100'}`}>
                   {r.type === 'retard' ? 'Retard' : 'Absence'}
                 </Badge>
                 {r.type === 'absence' && (
-                  <Badge variant="outline" className="text-[9px]">{r.justified ? 'Justifiée' : 'Non justifiée'}</Badge>
+                  <Badge variant="outline" className="text-[11px]">{r.justified ? 'Justifiée' : 'Non justifiée'}</Badge>
                 )}
               </div>
               <p className="text-xs text-muted-foreground mt-1">

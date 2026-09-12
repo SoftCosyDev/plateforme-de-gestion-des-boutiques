@@ -6,7 +6,7 @@ import { Card } from '@/components/ui/card' // Conteneur visuel réutilisable.
 import { Button } from '@/components/ui/button' // Bouton stylé réutilisable.
 import { Input } from '@/components/ui/input' // Champ de saisie stylé réutilisable.
 import { Badge } from '@/components/ui/badge' // Petite étiquette stylée.
-import { ApiProduct, getPrimaryVariant, useProducts, useCategories } from '@/lib/queries/products' // Catalogue réel.
+import { ApiProduct, ApiVariant, findVariantByBarcode, flattenSellableVariants, searchSellableVariants, useProducts, useCategories, variantLabel } from '@/lib/queries/products' // Catalogue réel.
 import { useCustomers, useCreateCustomer } from '@/lib/queries/customers' // Clients réels (Phase 3).
 import { PaymentMode, useCreateSale } from '@/lib/queries/sales' // Encaissement réel.
 import BarcodeScannerModal from '@/components/barcode-scanner-modal' // Scan caméra, backend-agnostic.
@@ -54,25 +54,19 @@ export default function CashierPage() {
     return phone ? customers.find(c => c.phone === phone) || null : null
   }, [customers, customerPhone])
 
-  const searchResults = useMemo(() => {
-    const term = searchTerm.trim().toLowerCase()
-    if (!term) return []
-    return products.filter(p => {
-      const barcode = getPrimaryVariant(p)?.barcode || ''
-      return p.name.toLowerCase().includes(term) || barcode.includes(term)
-    }).slice(0, 6)
-  }, [products, searchTerm])
+  // Recherche à l'échelle de LA variante (pas seulement la première) — indispensable dès qu'un
+  // produit a plusieurs déclinaisons, chacune avec son propre code-barres/prix/stock.
+  const searchResults = useMemo(() => searchSellableVariants(products, searchTerm), [products, searchTerm])
 
   const categoriesWithCount = useMemo(() => (
     categories.map(c => ({ ...c, count: products.filter(p => p.category.id === c.id).length })).filter(c => c.count > 0)
   ), [categories, products])
 
-  const categoryProducts = useMemo(() => (
-    activeCategory !== null ? products.filter(p => p.category.id === activeCategory) : []
+  const categoryVariants = useMemo(() => (
+    activeCategory !== null ? flattenSellableVariants(products.filter(p => p.category.id === activeCategory)) : []
   ), [products, activeCategory])
 
-  const addToCart = (product: ApiProduct, quantity = 1) => {
-    const variant = getPrimaryVariant(product)
+  const addToCart = (product: ApiProduct, variant: ApiVariant, quantity = 1) => {
     if (!variant || variant.stock.availableQty <= 0) return
     setCart(prev => {
       const existing = prev.find(i => i.variantId === variant.id)
@@ -83,25 +77,25 @@ export default function CashierPage() {
           : i)
       }
       return [...prev, {
-        variantId: variant.id, productId: product.id, name: product.name, emoji: product.emoji,
+        variantId: variant.id, productId: product.id, name: variantLabel(product, variant), emoji: product.emoji,
         unitPrice: variant.sellingPrice, quantity: 1, maxStock: variant.stock.availableQty,
       }]
     })
   }
 
   const handleScan = (barcode: string) => {
-    const product = products.find(p => getPrimaryVariant(p)?.barcode === barcode)
-    if (!product) {
+    const match = findVariantByBarcode(products, barcode)
+    if (!match) {
       setScanFeedback({ type: 'error', message: `Produit inconnu : ${barcode}` })
       return
     }
-    const variant = getPrimaryVariant(product)
+    const { product, variant, label } = match
     if (variant.stock.availableQty <= 0) {
       setScanFeedback({ type: 'error', message: `${product.name} — rupture de stock` })
       return
     }
-    addToCart(product)
-    setScanFeedback({ type: 'success', message: `${product.emoji} ${product.name} ajouté` })
+    addToCart(product, variant)
+    setScanFeedback({ type: 'success', message: `${product.emoji} ${label} ajouté` })
   }
 
   const updateQty = (variantId: number, delta: number) => {
@@ -218,21 +212,18 @@ export default function CashierPage() {
           </div>
           {searchResults.length > 0 && (
             <div className="mt-3 divide-y divide-border/40 border border-border/50 rounded-xl overflow-hidden">
-              {searchResults.map(p => {
-                const variant = getPrimaryVariant(p)
-                return (
-                  <button
-                    key={p.id}
-                    type="button"
-                    disabled={variant.stock.availableQty <= 0}
-                    onClick={() => { addToCart(p); setSearchTerm('') }}
-                    className="w-full flex items-center justify-between gap-2 p-3 text-left text-sm hover:bg-muted transition-colors disabled:opacity-40"
-                  >
-                    <span className="flex items-center gap-2 truncate"><span>{p.emoji}</span><span className="font-semibold truncate">{p.name}</span></span>
-                    <span className="text-xs font-bold text-muted-foreground shrink-0">{variant.sellingPrice.toLocaleString()} FCFA · Stock {variant.stock.availableQty}</span>
-                  </button>
-                )
-              })}
+              {searchResults.map(({ product, variant, label }) => (
+                <button
+                  key={variant.id}
+                  type="button"
+                  disabled={variant.stock.availableQty <= 0}
+                  onClick={() => { addToCart(product, variant); setSearchTerm('') }}
+                  className="w-full flex items-center justify-between gap-2 p-3 text-left text-sm hover:bg-muted transition-colors disabled:opacity-40"
+                >
+                  <span className="flex items-center gap-2 truncate"><span>{product.emoji}</span><span className="font-semibold truncate">{label}</span></span>
+                  <span className="text-xs font-bold text-muted-foreground shrink-0">{variant.sellingPrice.toLocaleString()} FCFA · Stock {variant.stock.availableQty}</span>
+                </button>
+              ))}
             </div>
           )}
         </Card>
@@ -248,7 +239,7 @@ export default function CashierPage() {
                 className="p-4 rounded-2xl border border-border/50 bg-card hover:border-primary/40 hover:shadow-md transition-all text-left"
               >
                 <div className="text-sm font-bold truncate">{cat.name}</div>
-                <div className="text-[10px] text-muted-foreground mt-1">{cat.count} article(s)</div>
+                <div className="text-[12px] text-muted-foreground mt-1">{cat.count} article(s)</div>
               </button>
             ))}
           </div>
@@ -265,27 +256,24 @@ export default function CashierPage() {
               <span className="text-sm font-black">{categoriesWithCount.find(c => c.id === activeCategory)?.name}</span>
             </div>
             <div className="overflow-hidden rounded-2xl border border-border/50 bg-card shadow-sm divide-y divide-border/40">
-              {categoryProducts.map(p => {
-                const variant = getPrimaryVariant(p)
-                return (
-                  <button
-                    key={p.id}
-                    type="button"
-                    disabled={variant.stock.availableQty <= 0}
-                    onClick={() => addToCart(p)}
-                    className="w-full flex items-center gap-3 p-3 text-left hover:bg-muted/30 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-                  >
-                    <span className="text-xl shrink-0">{p.emoji}</span>
-                    <span className="flex-1 min-w-0 font-semibold text-sm truncate">{p.name}</span>
-                    <span className="text-xs font-bold text-muted-foreground shrink-0">{variant.sellingPrice.toLocaleString()} FCFA</span>
-                    <span className={`text-[10px] font-black shrink-0 ${
-                      variant.stock.availableQty === 0 ? 'text-destructive' : variant.stock.availableQty <= variant.lowStockThreshold ? 'text-orange-500' : 'text-green-600'
-                    }`}>
-                      Stock {variant.stock.availableQty}
-                    </span>
-                  </button>
-                )
-              })}
+              {categoryVariants.map(({ product, variant, label }) => (
+                <button
+                  key={variant.id}
+                  type="button"
+                  disabled={variant.stock.availableQty <= 0}
+                  onClick={() => addToCart(product, variant)}
+                  className="w-full flex items-center gap-3 p-3 text-left hover:bg-muted/30 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  <span className="text-xl shrink-0">{product.emoji}</span>
+                  <span className="flex-1 min-w-0 font-semibold text-sm truncate">{label}</span>
+                  <span className="text-xs font-bold text-muted-foreground shrink-0">{variant.sellingPrice.toLocaleString()} FCFA</span>
+                  <span className={`text-[12px] font-black shrink-0 ${
+                    variant.stock.availableQty === 0 ? 'text-destructive' : variant.stock.availableQty <= variant.lowStockThreshold ? 'text-orange-500' : 'text-green-600'
+                  }`}>
+                    Stock {variant.stock.availableQty}
+                  </span>
+                </button>
+              ))}
             </div>
           </div>
         )}
@@ -357,7 +345,7 @@ export default function CashierPage() {
               className="h-10 text-sm"
             />
             {matchedCustomer && (
-              <Badge variant="outline" className="text-[10px]">
+              <Badge variant="outline" className="text-[12px]">
                 Client existant — doit déjà {matchedCustomer.balanceDue.toLocaleString()} FCFA
               </Badge>
             )}
@@ -381,7 +369,7 @@ export default function CashierPage() {
               ))}
             </div>
             {paymentMode === 'credit' && (
-              <Badge variant="outline" className="text-[10px]">Le montant sera ajouté à l'ardoise du client</Badge>
+              <Badge variant="outline" className="text-[12px]">Le montant sera ajouté à l'ardoise du client</Badge>
             )}
             {paymentMode === 'mobile_money' && (
               <div className="space-y-2 pt-1">

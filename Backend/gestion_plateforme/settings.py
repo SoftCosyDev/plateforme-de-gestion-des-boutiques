@@ -131,6 +131,16 @@ REST_FRAMEWORK = {
     'DEFAULT_THROTTLE_RATES': {
         'anon': '100/day',
         'user': '1000/hour',
+        # Un code PIN à 4 chiffres n'a que 10 000 combinaisons — django-axes ne le protège pas
+        # (il ne réagit qu'aux échecs de authenticate(), voir UserViewSet.unlock), ce quota freine
+        # donc lui-même un essai systématique (10/min -> ~16h pour épuiser 10 000 combinaisons).
+        'pin_unlock': '10/min',
+        # Flux public "identifiant/mot de passe oublié" (SecurityQuestionLookupView +
+        # PasswordResetView) : django-axes ne protège que /token/ (authenticate()), ces deux
+        # routes ont donc besoin de leur propre limite pour freiner un essai systématique des
+        # réponses à la question de sécurité. Partagé entre les deux vues (même scope) — un
+        # attaquant qui alterne les deux appels reste soumis au même quota global par IP.
+        'password_recovery': '10/hour',
     },
 }
 

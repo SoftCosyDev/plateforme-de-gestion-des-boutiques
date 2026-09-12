@@ -9,9 +9,9 @@ import { Card } from '@/components/ui/card' // Conteneur visuel réutilisable.
 import { Button } from '@/components/ui/button' // Bouton stylé réutilisable.
 import { Input } from '@/components/ui/input' // Champ de saisie stylé réutilisable.
 import { Badge } from '@/components/ui/badge' // Petite étiquette stylée.
-import { getPrimaryVariant, useProducts } from '@/lib/queries/products' // Catalogue réel (variantes).
+import { flattenSellableVariants, useProducts } from '@/lib/queries/products' // Catalogue réel (variantes).
 import {
-  ApiInventoryCount, InventoryStatus, useCreateInventoryCount, useFinishInventoryCount, useInventoryCounts, useUpdateInventoryLine,
+  ApiInventoryCount, ApiInventoryLine, InventoryStatus, useCreateInventoryCount, useFinishInventoryCount, useInventoryCounts, useUpdateInventoryLine,
 } from '@/lib/queries/inventory' // Inventaire réel — expected_qty/discrepancy calculés côté serveur.
 
 function defaultNotes() {
@@ -34,7 +34,9 @@ export default function InventoryPage() {
   const [activeId, setActiveId] = useState<number | null>(null)
   const [isNewModalOpen, setIsNewModalOpen] = useState(false)
   const [newNotes, setNewNotes] = useState('')
-  const [selectedProductIds, setSelectedProductIds] = useState<Set<number>>(new Set())
+  // Sélection à l'échelle de LA variante (pas du produit) — un produit à déclinaisons doit
+  // pouvoir compter chaque taille/couleur séparément, chacune avec son propre stock à vérifier.
+  const [selectedVariantIds, setSelectedVariantIds] = useState<Set<number>>(new Set())
   const [creating, setCreating] = useState(false)
   const [listSearch, setListSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState<'all' | InventoryStatus>('all')
@@ -43,7 +45,14 @@ export default function InventoryPage() {
   const sorted = useMemo(() => [...counts].sort((a, b) => b.createdAt.localeCompare(a.createdAt)), [counts])
   const active = sorted.find(i => i.id === activeId) || null
 
+  const sellableVariants = useMemo(() => flattenSellableVariants(products), [products])
   const productInfo = (productId: number) => products.find(p => p.id === productId)
+  // Une ligne d'inventaire garde sa propre variante (`line.variant`, nullable si la variante a
+  // depuis été supprimée — voir InventoryLine.variant, on_delete=SET_NULL) — jamais juste "la
+  // première variante du produit", sous peine d'afficher le même nom/code pour chaque
+  // déclinaison d'un même produit à plusieurs variantes.
+  const variantInfoForLine = (line: ApiInventoryLine) =>
+    line.variant != null ? sellableVariants.find(sv => sv.variant.id === line.variant) : undefined
 
   const filteredSessions = useMemo(() => {
     const term = listSearch.trim().toLowerCase()
@@ -56,27 +65,24 @@ export default function InventoryPage() {
 
   const openNewModal = () => {
     setNewNotes(defaultNotes())
-    // Par défaut, tous les produits sont proposés au comptage (comme avant) — décochables un par un.
-    setSelectedProductIds(new Set(products.map(p => p.id)))
+    // Par défaut, toutes les variantes sont proposées au comptage (comme avant) — décochables une par une.
+    setSelectedVariantIds(new Set(sellableVariants.map(sv => sv.variant.id)))
     setIsNewModalOpen(true)
   }
   const closeNewModal = () => setIsNewModalOpen(false)
 
-  const toggleProduct = (productId: number) => {
-    setSelectedProductIds(prev => {
+  const toggleVariant = (variantId: number) => {
+    setSelectedVariantIds(prev => {
       const next = new Set(prev)
-      if (next.has(productId)) next.delete(productId)
-      else next.add(productId)
+      if (next.has(variantId)) next.delete(variantId)
+      else next.add(variantId)
       return next
     })
   }
 
   const submitNew = async (e: React.FormEvent) => {
     e.preventDefault()
-    const variantIds = products
-      .filter(p => selectedProductIds.has(p.id))
-      .map(p => getPrimaryVariant(p)?.id)
-      .filter((id): id is number => id != null)
+    const variantIds = [...selectedVariantIds]
     if (variantIds.length === 0) return
     setCreating(true)
     try {
@@ -95,11 +101,6 @@ export default function InventoryPage() {
     await finishCount.mutateAsync(active.id)
   }
 
-  const barcodeFor = (productId: number) => {
-    const p = productInfo(productId)
-    return (p && getPrimaryVariant(p)?.barcode) || '—'
-  }
-
   const stepCount = (lineId: number, currentCounted: number | null, expected: number, delta: number) => {
     const base = currentCounted ?? expected
     updateLine.mutate({ id: lineId, countedQty: Math.max(0, base + delta) })
@@ -111,7 +112,7 @@ export default function InventoryPage() {
     const isLocked = active.status === 'termine'
     const visibleLines = active.lines.filter(l => {
       if (!countSearch.trim()) return true
-      const name = productInfo(l.product)?.name || ''
+      const name = variantInfoForLine(l)?.label || productInfo(l.product)?.name || ''
       return name.toLowerCase().includes(countSearch.trim().toLowerCase())
     })
 
@@ -172,8 +173,8 @@ export default function InventoryPage() {
               {visibleLines.map(line => (
                 <tr key={line.id} className="hover:bg-muted/30 transition-colors">
                   <td className="p-4">
-                    <div className="font-semibold text-sm">{productInfo(line.product)?.name || 'Produit supprimé'}</div>
-                    <div className="font-mono text-[10px] text-muted-foreground">{barcodeFor(line.product)}</div>
+                    <div className="font-semibold text-sm">{variantInfoForLine(line)?.label || productInfo(line.product)?.name || 'Produit supprimé'}</div>
+                    <div className="font-mono text-[12px] text-muted-foreground">{variantInfoForLine(line)?.variant.barcode || '—'}</div>
                   </td>
                   <td className="p-4 text-center text-sm text-muted-foreground">{line.expectedQty}</td>
                   <td className="p-4">
@@ -325,11 +326,11 @@ export default function InventoryPage() {
               </p>
               <div className="flex items-center gap-6 mt-4 pt-4 border-t border-border/40">
                 <div>
-                  <p className="text-[10px] text-muted-foreground uppercase font-bold">Produits</p>
+                  <p className="text-[12px] text-muted-foreground uppercase font-bold">Produits</p>
                   <p className="text-lg font-black">{inv.lines.length}</p>
                 </div>
                 <div>
-                  <p className="text-[10px] text-muted-foreground uppercase font-bold">Écart</p>
+                  <p className="text-[12px] text-muted-foreground uppercase font-bold">Écart</p>
                   <p className={`text-lg font-black ${discrepancies > 0 ? 'text-destructive' : 'text-green-600'}`}>{discrepancies}</p>
                 </div>
                 <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0 ml-auto" />
@@ -362,29 +363,29 @@ export default function InventoryPage() {
               </div>
               <div className="space-y-2">
                 <label className="text-xs font-bold text-muted-foreground uppercase">
-                  Produits à compter ({selectedProductIds.size}/{products.length})
+                  Variantes à compter ({selectedVariantIds.size}/{sellableVariants.length})
                 </label>
                 <div className="max-h-48 overflow-y-auto border border-border/50 rounded-xl divide-y divide-border/40">
-                  {products.map(p => (
-                    <label key={p.id} className="flex items-center gap-2 px-3 py-2 text-sm cursor-pointer hover:bg-muted/30">
+                  {sellableVariants.map(({ product, variant, label }) => (
+                    <label key={variant.id} className="flex items-center gap-2 px-3 py-2 text-sm cursor-pointer hover:bg-muted/30">
                       <input
                         type="checkbox"
-                        checked={selectedProductIds.has(p.id)}
-                        onChange={() => toggleProduct(p.id)}
+                        checked={selectedVariantIds.has(variant.id)}
+                        onChange={() => toggleVariant(variant.id)}
                         className="w-4 h-4 rounded border-input"
                       />
-                      <span>{p.emoji}</span>
-                      <span className="truncate">{p.name}</span>
+                      <span>{product.emoji}</span>
+                      <span className="truncate">{label}</span>
                     </label>
                   ))}
-                  {products.length === 0 && (
+                  {sellableVariants.length === 0 && (
                     <p className="p-3 text-xs text-muted-foreground italic">Aucun produit dans le catalogue.</p>
                   )}
                 </div>
               </div>
               <div className="pt-2 flex gap-3">
                 <Button type="button" variant="outline" onClick={closeNewModal} className="flex-1 h-11 rounded-xl font-bold">Annuler</Button>
-                <Button type="submit" disabled={creating || selectedProductIds.size === 0} className="flex-1 h-11 rounded-xl font-bold gap-2"><Save className="w-4 h-4" />Démarrer</Button>
+                <Button type="submit" disabled={creating || selectedVariantIds.size === 0} className="flex-1 h-11 rounded-xl font-bold gap-2"><Save className="w-4 h-4" />Démarrer</Button>
               </div>
             </form>
           </Card>

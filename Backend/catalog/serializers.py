@@ -7,7 +7,7 @@ from boutiques.serializers import BoutiqueScopedWriteSerializerMixin
 from stock.models import Stock
 from stock.serializers import StockSerializer
 
-from .models import Category, Product, Variant
+from .models import Category, Product, Variant, generate_ean13_barcode
 
 
 # Sérialiseur de lecture d'une catégorie.
@@ -37,7 +37,7 @@ class VariantSerializer(serializers.ModelSerializer):
     class Meta:
         model = Variant
         fields = [
-            'id', 'sku', 'barcode', 'model', 'size', 'selling_price', 'cost_price',
+            'id', 'sku', 'barcode', 'selling_price', 'cost_price',
             'low_stock_threshold', 'attributes', 'is_active', 'stock',
         ]
         # sku : auto-généré par le modèle, jamais choisi par le client.
@@ -53,7 +53,7 @@ class VariantWriteSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Variant
-        fields = ['id', 'barcode', 'model', 'size', 'selling_price', 'cost_price', 'low_stock_threshold', 'attributes', 'is_active']
+        fields = ['id', 'barcode', 'selling_price', 'cost_price', 'low_stock_threshold', 'attributes', 'is_active']
 
 
 # Sérialiseur de lecture d'un produit, avec ses variantes imbriquées.
@@ -65,10 +65,13 @@ class ProductSerializer(serializers.ModelSerializer):
         model = Product
         fields = [
             'id', 'boutique', 'category', 'name', 'description', 'code_produit', 'brand',
-            'badge', 'icon', 'emoji', 'fabric', 'colors', 'is_published', 'unit',
+            'badge', 'icon', 'emoji', 'image', 'fabric', 'colors', 'is_published', 'unit',
             'expiration_date', 'variants',
         ]
-        read_only_fields = ['id', 'variants']
+        # image : jamais reçue ici (voir ProductViewSet.upload_image, seul point d'écriture) —
+        # en lecture seule pour que .url ressorte en URL ABSOLUE (le viewset passe
+        # context={'request': ...} par défaut), jamais relative comme un simple champ texte le ferait.
+        read_only_fields = ['id', 'variants', 'image']
 
 
 # Sérialiseur d'écriture d'un produit — crée/remplace ses variantes en une seule requête,
@@ -87,6 +90,25 @@ class ProductWriteSerializer(BoutiqueScopedWriteSerializerMixin, serializers.Mod
             'expiration_date', 'variants',
         ]
         read_only_fields = ['id']
+
+    # Chaque variante ne peut utiliser QUE les attributs que CETTE boutique a définis (voir
+    # Boutique.variant_attributes, configurable dans Réglages) — sans ce contrôle, une clé
+    # oubliée/mal orthographiée dans `attributes` passerait silencieusement, invisible ensuite
+    # dans le formulaire (qui n'affiche que les attributs connus de la boutique).
+    def validate(self, attrs):
+        boutique = attrs.get('boutique') or (self.instance.boutique if self.instance else None)
+        if boutique is not None:
+            allowed = set(boutique.variant_attributes)
+            for variant_data in attrs.get('variants', []):
+                unknown = set((variant_data.get('attributes') or {}).keys()) - allowed
+                if unknown:
+                    raise serializers.ValidationError({
+                        'variants': (
+                            f"Attribut(s) non configuré(s) pour cette boutique : {', '.join(sorted(unknown))}. "
+                            "À ajouter dans Réglages > Attributs de variante d'abord."
+                        ),
+                    })
+        return attrs
 
     @transaction.atomic
     def create(self, validated_data):
@@ -117,7 +139,11 @@ class ProductWriteSerializer(BoutiqueScopedWriteSerializerMixin, serializers.Mod
             for variant_data in variants_data:
                 variant_id = variant_data.pop('id', None)
                 if variant_id and variant_id in existing_ids:
-                    # Variante déjà connue -> mise à jour de ses champs.
+                    # Variante déjà connue -> mise à jour de ses champs. Un .update() en masse ne
+                    # déclenche PAS Variant.save() (donc pas sa génération auto de code-barres) —
+                    # on la reproduit ici explicitement pour ce cas précis.
+                    if not variant_data.get('barcode'):
+                        variant_data['barcode'] = generate_ean13_barcode()
                     Variant.objects.filter(pk=variant_id).update(**variant_data)
                     kept_ids.add(variant_id)
                 else:

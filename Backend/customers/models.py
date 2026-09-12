@@ -37,3 +37,39 @@ class Customer(models.Model):
 
     def __str__(self):
         return self.name
+
+
+# Historique des règlements d'ardoise — ledger d'AJOUT UNIQUEMENT, jamais modifié après coup
+# (même principe que stock.StockMovement pour le stock) : avant ce modèle, encaisser un paiement
+# se limitait à réécrire Customer.balance_due en silence, sans aucune trace de QUI avait validé
+# QUOI ni QUAND — voir CustomerViewSet.record_payment, seul point d'écriture légitime ici.
+class CustomerPayment(models.Model):
+    id = models.AutoField(primary_key=True)
+    # Boutique concernée — recopiée depuis le client au moment du paiement (comme sur
+    # StockMovement) pour permettre le cloisonnement direct sans remonter à chaque fois via customer.
+    boutique = models.ForeignKey('boutiques.Boutique', on_delete=models.PROTECT, related_name='customer_payments')
+    # Client dont l'ardoise est réglée — CASCADE : l'historique d'un client n'a plus de sens si
+    # le client lui-même est supprimé (contrairement à un compte utilisateur, voir `user` plus bas).
+    customer = models.ForeignKey(Customer, on_delete=models.CASCADE, related_name='payments')
+    # Montant réglé PENDANT ce paiement précis (toujours positif) — jamais le nouveau solde
+    # directement, pour que l'historique reste lisible même après plusieurs paiements partiels.
+    amount = models.DecimalField(max_digits=12, decimal_places=2)
+    # Solde restant dû juste APRÈS ce paiement — recopié à l'écriture (comme Sale.customer_name)
+    # pour lire l'historique tel qu'il était à l'époque, sans avoir à rejouer tous les paiements
+    # dans l'ordre pour reconstituer un solde à un instant donné.
+    balance_after = models.DecimalField(max_digits=12, decimal_places=2)
+    # Qui a encaissé ce paiement (employé OU propriétaire, les deux peuvent avoir accès à la page
+    # Clients) — SET_NULL : l'historique reste même si ce compte est supprimé plus tard.
+    user = models.ForeignKey('accounts.User', on_delete=models.SET_NULL, related_name='customer_payments', null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    objects = BoutiqueScopedQuerySet.as_manager()
+
+    class Meta:
+        verbose_name = 'Paiement ardoise'
+        verbose_name_plural = 'Paiements ardoise'
+        # Les plus récents en premier — un historique se lit toujours du plus récent au plus ancien.
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f'{self.customer.name} — {self.amount} FCFA'

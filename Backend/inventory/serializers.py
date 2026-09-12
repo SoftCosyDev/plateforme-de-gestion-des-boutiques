@@ -48,6 +48,8 @@ class InventoryCountWriteSerializer(BoutiqueScopedWriteSerializerMixin, serializ
             raise serializers.ValidationError("Un inventaire doit porter sur au moins une variante.")
         return value
 
+    # Ouvre une session d'inventaire : crée l'en-tête PUIS une ligne par variante demandée, avec
+    # son stock système actuel figé comme quantité attendue (voir expected_qty_for ci-dessous).
     def create(self, validated_data):
         lines_data = validated_data.pop('lines')
         # Qui a lancé ce comptage — toujours le compte connecté.

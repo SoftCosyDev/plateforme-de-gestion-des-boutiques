@@ -1,4 +1,4 @@
-import { LayoutDashboard, Package, ShoppingCart, Users, UserCog, ClipboardList, BarChart3, Truck, PackagePlus, PackageCheck, Settings, LucideIcon } from 'lucide-react'
+import { LayoutDashboard, Package, ShoppingCart, Receipt, Users, UserCog, ClipboardList, BarChart3, Truck, PackagePlus, PackageCheck, Settings, LucideIcon } from 'lucide-react'
 // `FeatureKey` : source unique des clés de fonctionnalité, miroir du backend.
 import { FeatureKey } from './features'
 
@@ -15,13 +15,14 @@ export interface PageDef {
 
 // Source unique pour la navigation (sidebar) ET pour la grille "Pages
 // autorisées" du formulaire employé — évite que les deux listes divergent.
-// Certaines clés de `ALL_FEATURES` (stocks, sales, attendance, payroll)
-// n'ont pas encore de route dédiée ici — attendance/payroll resteront des
+// Certaines clés de `ALL_FEATURES` (stocks, attendance, payroll) n'ont
+// toujours pas de route dédiée ici — attendance/payroll resteront des
 // onglets de /employees, jamais des routes séparées.
 export const PAGES: PageDef[] = [
   { id: 'dashboard', path: '/', label: 'Tableau de bord', icon: LayoutDashboard },
   { id: 'products', path: '/products', label: 'Produits', icon: Package },
   { id: 'cashier', path: '/cashier', label: 'Caisse', icon: ShoppingCart },
+  { id: 'sales', path: '/sales', label: 'Ventes', icon: Receipt },
   { id: 'orders', path: '/orders', label: 'Commandes', icon: PackageCheck },
   { id: 'customers', path: '/customers', label: 'Clients', icon: Users },
   { id: 'suppliers', path: '/suppliers', label: 'Fournisseurs', icon: Truck },

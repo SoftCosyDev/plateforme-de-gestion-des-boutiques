@@ -60,7 +60,7 @@ class BoutiqueSerializer(serializers.ModelSerializer):
         model = Boutique
         fields = [
             'id', 'owner', 'name', 'neighborhood', 'theme_primary_color', 'theme_accent_color',
-            'business_type', 'enabled_features', 'is_active', 'settings', 'created_at',
+            'business_type', 'enabled_features', 'variant_attributes', 'is_active', 'settings', 'created_at',
         ]
         read_only_fields = ['id', 'created_at']
 
@@ -73,14 +73,17 @@ class BoutiqueWriteSerializer(serializers.ModelSerializer):
         model = Boutique
         fields = [
             'id', 'owner', 'name', 'neighborhood', 'theme_primary_color', 'theme_accent_color',
-            'business_type', 'enabled_features', 'is_active',
+            'business_type', 'enabled_features', 'variant_attributes', 'is_active',
         ]
         read_only_fields = ['id']
         # owner facultatif au niveau du champ — validate() ci-dessous impose la vraie règle.
         # is_active facultatif aussi : absent = ne touche pas au champ (voir validate()).
+        # variant_attributes facultatif : librement modifiable par l'Owner lui-même (contrairement
+        # à enabled_features) — c'est le vocabulaire de déclinaisons de SA boutique, pas un
+        # abonnement vendu par la plateforme.
         extra_kwargs = {
             'owner': {'required': False}, 'is_active': {'required': False},
-            'enabled_features': {'required': False},
+            'enabled_features': {'required': False}, 'variant_attributes': {'required': False},
         }
 
     def validate(self, attrs):

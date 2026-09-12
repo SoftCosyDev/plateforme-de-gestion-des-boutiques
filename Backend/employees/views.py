@@ -1,5 +1,8 @@
+# action : ajoute une route personnalisée (upload-photo) à ce ViewSet.
+from rest_framework.decorators import action
 # IsAuthenticated : exige une session valide.
 from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
 
 from accounts.permissions import required_page
 from boutiques.views import BoutiqueScopedModelViewSet, FullRepresentationOnWriteMixin
@@ -26,6 +29,9 @@ class EmployeeProfileViewSet(FullRepresentationOnWriteMixin, BoutiqueScopedModel
     search_fields = ['user__full_name', 'role']
     ordering_fields = ['user__full_name', 'hire_date']
 
+    # Sérialiseur d'écriture (crée le User ET l'EmployeeProfile en un seul appel, voir
+    # EmployeeProfileWriteSerializer) vs de lecture (expose le nom/photo de l'utilisateur
+    # imbriqués) — même idiome que le reste du backend.
     def get_serializer_class(self):
         if self.action in ('create', 'update', 'partial_update'):
             return EmployeeProfileWriteSerializer
@@ -43,6 +49,20 @@ class EmployeeProfileViewSet(FullRepresentationOnWriteMixin, BoutiqueScopedModel
         instance.delete()
         user.delete()
 
+    # Photo de profil de l'EMPLOYÉ, définie par son gérant/propriétaire — distincte de
+    # `/users/upload-photo/` (réservée à l'auto-upload de son PROPRE compte, voir
+    # accounts/views.py::UserViewSet.upload_photo). `get_object()` applique déjà le
+    # cloisonnement habituel : un Owner ne peut jamais cibler l'employé d'une autre boutique.
+    @action(detail=True, methods=['post'], url_path='upload-photo')
+    def upload_photo(self, request, pk=None):
+        instance = self.get_object()
+        fichier = request.FILES.get('photo')
+        if not fichier:
+            return Response({'detail': 'Aucun fichier fourni (champ "photo").'}, status=400)
+        instance.user.profile_photo = fichier
+        instance.user.save(update_fields=['profile_photo'])
+        return Response(EmployeeProfileSerializer(instance).data)
+
 
 class AttendanceRecordViewSet(BoutiqueScopedModelViewSet):
     feature_key = 'attendance'
@@ -51,6 +71,8 @@ class AttendanceRecordViewSet(BoutiqueScopedModelViewSet):
     filterset_fields = ['employee', 'type', 'boutique']
     ordering_fields = ['date']
 
+    # Sérialiseur d'écriture (accepte juste employé/date/type bruts) vs de lecture (expose
+    # aussi le nom de l'employé imbriqué) — même idiome que le reste du backend.
     def get_serializer_class(self):
         if self.action in ('create', 'update', 'partial_update'):
             return AttendanceRecordWriteSerializer

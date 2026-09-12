@@ -8,6 +8,9 @@ class DashboardSummarySerializer(serializers.Serializer):
     total_stock_value = serializers.DecimalField(max_digits=14, decimal_places=2)
     active_alerts = serializers.IntegerField()
     total_sales_amount = serializers.DecimalField(max_digits=14, decimal_places=2)
+    total_profit = serializers.DecimalField(max_digits=14, decimal_places=2)
+    today_sales_amount = serializers.DecimalField(max_digits=14, decimal_places=2)
+    today_sales_count = serializers.IntegerField()
     today_refunds = serializers.IntegerField()
 
 

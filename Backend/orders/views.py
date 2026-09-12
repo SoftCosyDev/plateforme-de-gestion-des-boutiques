@@ -26,6 +26,9 @@ class OrderViewSet(FullRepresentationOnCreateMixin, BoutiqueScopedModelViewSet):
     filterset_fields = ['status', 'channel', 'customer', 'boutique']
     ordering_fields = ['created_at']
 
+    # Sérialiseur d'écriture (accepte les lignes imbriquées en brut, avec variant_label en repli
+    # si la variante exacte n'est pas connue) vs de lecture (expose le client/la boutique
+    # imbriqués) — même idiome que le reste du backend.
     def get_serializer_class(self):
         if self.action == 'create':
             return OrderWriteSerializer

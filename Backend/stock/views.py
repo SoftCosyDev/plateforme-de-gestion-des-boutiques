@@ -21,10 +21,14 @@ class StockMovementViewSet(FullRepresentationOnCreateMixin, BoutiqueScopedModelV
     filterset_fields = ['product', 'movement_type', 'reason', 'boutique']
     ordering_fields = ['created_at']
 
+    # Sérialiseur d'écriture (accepte juste stock/quantité/raison bruts) vs de lecture (expose
+    # aussi le produit et la boutique imbriqués) — même idiome que le reste du backend.
     def get_serializer_class(self):
         if self.action == 'create':
             return StockMovementWriteSerializer
         return StockMovementSerializer
 
+    # Ajuster le stock reste une opération de la page Produits (pas de page "Stock" séparée sur
+    # cette plateforme) — voir Backend/docs/schema.md pour le vocabulaire des pages.
     def get_permissions(self):
         return [IsAuthenticated(), required_page('products')()]

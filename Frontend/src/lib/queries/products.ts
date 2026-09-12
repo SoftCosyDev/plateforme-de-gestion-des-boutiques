@@ -42,12 +42,13 @@ interface RawVariant {
   product: number
   sku: string // Auto-généré côté serveur, jamais saisi par l'utilisateur.
   barcode: string
-  model: string
-  size: string
   selling_price: string
   cost_price: string
   low_stock_threshold: string | null
-  attributes: Record<string, unknown>
+  // Valeurs des attributs de déclinaison PROPRES à la boutique (ex: {"Taille":"M","Couleur":
+  // "Rouge"}) — les clés possibles sont Boutique.variant_attributes, définies dans /settings.
+  // Toujours du texte : le formulaire ne collecte que des champs texte, jamais autre chose.
+  attributes: Record<string, string>
   is_active: boolean
   stock: RawStock
 }
@@ -57,12 +58,10 @@ export interface ApiVariant {
   id: number
   sku: string
   barcode: string
-  model: string
-  size: string
   sellingPrice: number
   costPrice: number
   lowStockThreshold: number
-  attributes: Record<string, unknown>
+  attributes: Record<string, string>
   isActive: boolean
   stock: ApiStock
 }
@@ -73,8 +72,6 @@ function mapVariant(raw: RawVariant): ApiVariant {
     id: raw.id,
     sku: raw.sku,
     barcode: raw.barcode,
-    model: raw.model,
-    size: raw.size,
     sellingPrice: Number(raw.selling_price),
     costPrice: Number(raw.cost_price),
     // `low_stock_threshold` est nullable côté backend (pas de seuil propre à cette variante).
@@ -99,6 +96,9 @@ interface RawProduct {
   name: string
   code_produit: string
   emoji: string
+  // URL absolue (voir ProductSerializer, context={'request'} côté backend) ou null tant
+  // qu'aucune photo n'a été uploadée (voir useUploadProductImage) — l'emoji reste alors l'affichage.
+  image: string | null
   is_published: boolean
   unit: Unit
   expiration_date: string | null
@@ -113,6 +113,7 @@ export interface ApiProduct {
   name: string
   codeProduit: string
   emoji: string
+  image: string | null
   isPublished: boolean
   unit: Unit
   expirationDate: string | null
@@ -127,6 +128,7 @@ function mapProduct(raw: RawProduct): ApiProduct {
     name: raw.name,
     codeProduit: raw.code_produit,
     emoji: raw.emoji,
+    image: raw.image,
     isPublished: raw.is_published,
     unit: raw.unit,
     expirationDate: raw.expiration_date,
@@ -134,11 +136,49 @@ function mapProduct(raw: RawProduct): ApiProduct {
   }
 }
 
-// Un produit "simple" (épicerie) se comporte comme un article mono-SKU classique via SA
-// PREMIÈRE variante — un produit à déclinaisons (mode boutique) en aurait plusieurs, hors
-// scope de cette UI pour l'instant (voir Backend/docs/schema.md pour le mécanisme complet).
-export function getPrimaryVariant(product: ApiProduct): ApiVariant {
-  return product.variants[0]
+// Une variante "à plat", accompagnée de son produit parent — la vraie unité vendable/comptable
+// dès qu'un produit a plusieurs déclinaisons (taille/couleur/modèle). Utilisé par la Caisse, les
+// Commandes, les Achats et l'Inventaire pour rechercher/choisir/scanner à l'échelle de LA
+// variante précise, jamais seulement de son produit.
+export interface SellableVariant {
+  product: ApiProduct
+  variant: ApiVariant
+  // Étiquette lisible : "Nom du produit" seul si une unique variante sans déclinaison, sinon
+  // "Nom du produit — Modèle/Taille" pour distinguer chaque déclinaison à l'écran.
+  label: string
+}
+
+export function variantLabel(product: ApiProduct, variant: ApiVariant): string {
+  // L'ordre des clés d'un objet JS suit l'ordre d'insertion pour des clés texte — comme le
+  // formulaire écrit les attributs dans l'ordre configuré par la boutique (Boutique.
+  // variant_attributes), le libellé respecte naturellement cet ordre sans logique supplémentaire.
+  const descriptor = Object.values(variant.attributes).filter(Boolean).join(' / ')
+  return descriptor ? `${product.name} — ${descriptor}` : product.name
+}
+
+export function flattenSellableVariants(products: ApiProduct[]): SellableVariant[] {
+  return products.flatMap(product => product.variants.map(variant => ({ product, variant, label: variantLabel(product, variant) })))
+}
+
+// Recherche par nom de produit, modèle/taille, OU code-barres d'UNE variante précise — contrairement
+// à ne filtrer que sur le code-barres de la variante primaire, ceci retrouve n'importe quelle
+// déclinaison d'un produit à plusieurs variantes.
+export function searchSellableVariants(products: ApiProduct[], term: string, limit = 6): SellableVariant[] {
+  const needle = term.trim().toLowerCase()
+  if (!needle) return []
+  return flattenSellableVariants(products)
+    .filter(({ product, variant }) => (
+      product.name.toLowerCase().includes(needle)
+      || variant.barcode.toLowerCase().includes(needle)
+      || Object.values(variant.attributes).some(v => v.toLowerCase().includes(needle))
+    ))
+    .slice(0, limit)
+}
+
+// Retrouve la variante EXACTE dont le code-barres correspond à un scan — indispensable dès qu'un
+// produit a plusieurs variantes, chacune avec son propre code-barres physique.
+export function findVariantByBarcode(products: ApiProduct[], barcode: string): SellableVariant | undefined {
+  return flattenSellableVariants(products).find(({ variant }) => variant.barcode === barcode)
 }
 
 // `boutique` en paramètre de requête : sans lui, un SUPERADMIN/OWNER multi-boutiques recevrait
@@ -153,6 +193,26 @@ export function useCategories() {
   })
 }
 
+// Une catégorie n'a que `name` d'obligatoire côté backend (voir catalog/models.py::Category) —
+// `description`/`imageUrl` restent hors de ce formulaire minimal (créable à la volée depuis la
+// page Produits, avant même d'avoir un seul produit).
+export interface CategoryInput {
+  name: string
+}
+
+export function useCreateCategory() {
+  const queryClient = useQueryClient()
+  const boutiqueId = useActiveBoutiqueId()
+  return useMutation({
+    mutationFn: (input: CategoryInput) =>
+      api.post<ApiCategory>('/categories/', {
+        boutique: boutiqueId ?? undefined, // undefined -> absent du JSON (le serveur le force pour un EMPLOYEE).
+        name: input.name,
+      }).then(res => res.data),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['categories'] }),
+  })
+}
+
 export function useProducts() {
   const boutiqueId = useActiveBoutiqueId()
   return useQuery({
@@ -161,24 +221,31 @@ export function useProducts() {
   })
 }
 
-// Champs collectés par le formulaire mono-article — poste UNE seule variante imbriquée (le
-// backend, lui, accepte un tableau complet, voir catalog/serializers.py::ProductWriteSerializer).
+// Une entrée de variante dans le formulaire — un produit "simple" (épicerie) n'en fournit qu'UNE
+// seule, un produit à déclinaisons (mode) en fournit plusieurs (voir catalog/serializers.py::
+// ProductWriteSerializer.update() pour la sémantique upsert : avec id = mise à jour, sans id =
+// nouvelle variante, absente du tableau = supprimée).
+export interface VariantInput {
+  // Présent = met à jour CETTE variante existante ; absent = le serveur en crée une nouvelle.
+  // TOUJOURS fournir l'id à la modification, sous peine que le serveur supprime l'ancienne
+  // variante (et son stock !) pour en recréer une neuve à zéro.
+  id?: number
+  // Clés = attributs configurés par CETTE boutique (Boutique.variant_attributes) — le serveur
+  // rejette toute clé inconnue (voir ProductWriteSerializer.validate côté backend).
+  attributes?: Record<string, string>
+  barcode: string
+  sellingPrice: number
+  costPrice: number
+  lowStockThreshold: number
+}
+
 export interface ProductInput {
   category: number
   name: string
   unit: Unit
   expirationDate: string | null
   emoji: string
-  variant: {
-    // Présent = met à jour CETTE variante existante ; absent = le serveur en crée une nouvelle.
-    // TOUJOURS fournir l'id à la modification, sous peine que le serveur supprime l'ancienne
-    // variante (et son stock !) pour en recréer une neuve à zéro (voir la logique d'update()).
-    id?: number
-    barcode: string
-    sellingPrice: number
-    costPrice: number
-    lowStockThreshold: number
-  }
+  variants: VariantInput[]
 }
 
 function toApiPayload(input: ProductInput, boutiqueId: number | null) {
@@ -189,13 +256,14 @@ function toApiPayload(input: ProductInput, boutiqueId: number | null) {
     unit: input.unit,
     expiration_date: input.expirationDate,
     emoji: input.emoji,
-    variants: [{
-      id: input.variant.id,
-      barcode: input.variant.barcode,
-      selling_price: input.variant.sellingPrice,
-      cost_price: input.variant.costPrice,
-      low_stock_threshold: input.variant.lowStockThreshold,
-    }],
+    variants: input.variants.map(v => ({
+      id: v.id,
+      attributes: v.attributes ?? {},
+      barcode: v.barcode,
+      selling_price: v.sellingPrice,
+      cost_price: v.costPrice,
+      low_stock_threshold: v.lowStockThreshold,
+    })),
   }
 }
 
@@ -223,6 +291,30 @@ export function useDeleteProduct() {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: (id: number) => api.delete(`/products/${id}/`),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['products'] }),
+  })
+}
+
+// Upload de la photo d'UN produit déjà créé (voir ProductViewSet.upload_image côté backend) —
+// séparé de useCreateProduct/useUpdateProduct : pas de fichier dans le JSON du formulaire
+// principal, même principe que la photo de profil d'un compte (voir accounts/views.py).
+export function useUploadProductImage() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ id, file }: { id: number; file: File }) => {
+      const formData = new FormData()
+      formData.append('image', file)
+      return mapProduct((await api.post<RawProduct>(`/products/${id}/upload-image/`, formData)).data)
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['products'] }),
+  })
+}
+
+// Retire la photo d'un produit -> l'affichage retombe sur son emoji (voir products/page.tsx).
+export function useDeleteProductImage() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (id: number) => mapProduct((await api.post<RawProduct>(`/products/${id}/delete-image/`)).data),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['products'] }),
   })
 }

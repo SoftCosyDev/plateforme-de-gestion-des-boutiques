@@ -163,10 +163,12 @@ export default function AdminPage() {
   return (
     <div className="min-h-screen p-4 md:p-6 lg:p-8">
       <div className="max-w-5xl mx-auto space-y-8">
-        <div className="flex items-center justify-between gap-4">
+        {/* flex-col sur mobile : une rangée fixe "titre à gauche, boutons à droite" débordait
+            sur un petit écran (le bouton "Créer une boutique" ne se compressait pas). */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
-            <h1 className="text-3xl font-extrabold tracking-tight text-foreground flex items-center gap-3">
-              <Building2 className="w-8 h-8 text-primary" />
+            <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-foreground flex items-center gap-3">
+              <Building2 className="w-7 h-7 sm:w-8 sm:h-8 text-primary shrink-0" />
               {isSuperAdmin ? 'Toutes les boutiques' : 'Mes boutiques'}
             </h1>
             <p className="text-muted-foreground mt-1 text-sm font-medium">
@@ -174,10 +176,10 @@ export default function AdminPage() {
             </p>
           </div>
           <div className="flex gap-3">
-            <Button onClick={openCreate} className="rounded-xl px-5 h-11 gap-2 font-bold">
-              <Plus className="w-4 h-4" /> Créer une boutique
+            <Button onClick={openCreate} className="rounded-xl px-5 h-11 gap-2 font-bold flex-1 sm:flex-none">
+              <Plus className="w-4 h-4 shrink-0" /> Créer une boutique
             </Button>
-            <Button variant="outline" onClick={handleLogout} className="rounded-xl px-4 h-11 gap-2 font-bold">
+            <Button variant="outline" onClick={handleLogout} className="rounded-xl px-4 h-11 gap-2 font-bold shrink-0">
               <LogOut className="w-4 h-4" />
             </Button>
           </div>
@@ -202,8 +204,8 @@ export default function AdminPage() {
                   <Building2 className="w-5 h-5" style={{ color: 'white' }} />
                 </div>
                 <div className="flex items-center gap-1.5 flex-wrap justify-end">
-                  {!b.is_active && <Badge className="text-[10px] font-bold bg-destructive/15 text-destructive hover:bg-destructive/15">Désactivée</Badge>}
-                  {isSuperAdmin && <Badge variant="outline" className="text-[10px] font-bold">{ownerName(b.owner)}</Badge>}
+                  {!b.is_active && <Badge className="text-[12px] font-bold bg-destructive/15 text-destructive hover:bg-destructive/15">Désactivée</Badge>}
+                  {isSuperAdmin && <Badge variant="outline" className="text-[12px] font-bold">{ownerName(b.owner)}</Badge>}
                 </div>
               </div>
               <h3 className="font-bold text-foreground">{b.name}</h3>
@@ -213,7 +215,7 @@ export default function AdminPage() {
               {/* Nombre d'employés/produits volontairement absent ici — éviterait un appel
                   API supplémentaire par carte juste pour un chiffre secondaire. */}
               {b.enabled_features.length > 0 && (
-                <p className="text-[10px] text-muted-foreground mt-4 pt-4 border-t border-border/40 font-bold uppercase tracking-wide">
+                <p className="text-[12px] text-muted-foreground mt-4 pt-4 border-t border-border/40 font-bold uppercase tracking-wide">
                   {b.enabled_features.length} fonctionnalité(s) activée(s)
                 </p>
               )}
@@ -333,7 +335,7 @@ export default function AdminPage() {
                 {isSuperAdmin ? (
                   <div className="space-y-2 pt-2 border-t border-border/40">
                     <label className="text-xs font-bold text-muted-foreground uppercase">Fonctionnalités activées</label>
-                    <p className="text-[11px] text-muted-foreground">
+                    <p className="text-[13px] text-muted-foreground">
                       Détermine ce que cette boutique peut utiliser sur la plateforme — modifiable plus tard, depuis cet écran.
                     </p>
                     <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 pt-1">
@@ -360,12 +362,12 @@ export default function AdminPage() {
                 ) : (
                   <div className="space-y-2 pt-2 border-t border-border/40">
                     <label className="text-xs font-bold text-muted-foreground uppercase">Fonctionnalités activées</label>
-                    <p className="text-[11px] text-muted-foreground">
+                    <p className="text-[13px] text-muted-foreground">
                       Attribuées par la plateforme selon votre abonnement — seul un administrateur peut les modifier.
                     </p>
                     <div className="flex flex-wrap gap-2 pt-1">
                       {form.enabledFeatures.length > 0 ? form.enabledFeatures.map(key => (
-                        <Badge key={key} variant="outline" className="text-[10px] font-bold">{key}</Badge>
+                        <Badge key={key} variant="outline" className="text-[12px] font-bold">{key}</Badge>
                       )) : (
                         <p className="text-xs text-muted-foreground italic">
                           {editingId ? 'Aucune fonctionnalité activée pour le moment.' : 'Seront activées par la plateforme après la création.'}
@@ -376,7 +378,7 @@ export default function AdminPage() {
                 )}
 
                 {!editingId && (
-                  <p className="text-[11px] text-muted-foreground pt-2 border-t border-border/40">
+                  <p className="text-[13px] text-muted-foreground pt-2 border-t border-border/40">
                     Le premier compte employé de cette boutique se crée séparément, une fois la
                     boutique créée (page Employés).
                   </p>

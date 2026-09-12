@@ -51,6 +51,8 @@ class EmployeeProfileWriteSerializer(BoutiqueScopedWriteSerializerMixin, seriali
             raise serializers.ValidationError({'password': 'Obligatoire à la création.'})
         return attrs
 
+    # Crée le User (compte de connexion) PUIS l'EmployeeProfile qui le rattache à la boutique —
+    # @transaction.atomic : si l'un des deux échoue, l'autre n'est pas laissé orphelin.
     @transaction.atomic
     def create(self, validated_data):
         username = validated_data.pop('username')
@@ -66,6 +68,9 @@ class EmployeeProfileWriteSerializer(BoutiqueScopedWriteSerializerMixin, seriali
         )
         return EmployeeProfile.objects.create(user=user, **validated_data)
 
+    # Met à jour le User lié SEULEMENT pour les champs fournis (username/full_name/password sont
+    # tous optionnels ici) avant de répercuter le reste (role, boutique, allowed_pages...) sur
+    # l'EmployeeProfile lui-même.
     @transaction.atomic
     def update(self, instance, validated_data):
         username = validated_data.pop('username', None)

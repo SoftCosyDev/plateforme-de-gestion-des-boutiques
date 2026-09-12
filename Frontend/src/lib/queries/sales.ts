@@ -69,13 +69,19 @@ interface RawSale {
 export interface ApiSale {
   id: number
   invoiceNumber: number | null
+  employee: number | null // Vendeur — id d'un EmployeeProfile, jamais envoyé par le client (déduit côté serveur).
   customer: number | null
   customerName: string
+  soldAt: string | null // Horodatage réel de l'encaissement — à préférer à createdAt pour trier/filtrer par période.
   channel: Channel
   paymentMode: PaymentMode
+  mobileMoneyReference: string
+  mobileMoneySender: string
   status: SaleStatus
   subtotal: number
+  discountAmount: number
   total: number
+  notes: string
   createdAt: string
   lines: ApiSaleLine[]
 }
@@ -84,13 +90,19 @@ function mapSale(raw: RawSale): ApiSale {
   return {
     id: raw.id,
     invoiceNumber: raw.invoice_number,
+    employee: raw.employee,
     customer: raw.customer,
     customerName: raw.customer_name,
+    soldAt: raw.sold_at,
     channel: raw.channel,
     paymentMode: raw.payment_mode,
+    mobileMoneyReference: raw.mobile_money_reference,
+    mobileMoneySender: raw.mobile_money_sender,
     status: raw.status,
     subtotal: Number(raw.subtotal),
+    discountAmount: Number(raw.discount_amount),
     total: Number(raw.total),
+    notes: raw.notes,
     createdAt: raw.created_at,
     lines: raw.lines.map(mapSaleLine),
   }

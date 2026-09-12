@@ -1,13 +1,19 @@
 'use client'
 
-import React, { createContext, useContext, useEffect, useState } from 'react'
+import React, { createContext, useCallback, useContext, useEffect, useState } from 'react'
+// usePathname : pour ne JAMAIS afficher l'écran de verrouillage sur /login (voir plus bas) —
+// une session/verrou resté en localStorage ne doit jamais bloquer un nouvel essai de connexion.
+import { usePathname } from 'next/navigation'
 import api from './api'
+import { queryClient } from './queryClient'
+import { useIdleTimer } from './use-idle-timer'
+import LockOverlay from '@/components/lock-overlay'
+// Clés localStorage — dans leur propre module pour qu'api.ts puisse aussi les nettoyer sur un
+// 401, sans import circulaire (voir auth-storage.ts).
+import { LOCK_KEY, SESSION_KEY, TOKEN_KEY } from './auth-storage'
 
-// v4 : authentification réelle contre le backend Django (POST /token/) —
-// remplace la recherche en clair dans les tableaux mock. Bump de la clé de
-// session car sa forme change (identifiants numériques, plus d'emoji).
-const SESSION_KEY = 'chez-idrissou-session-v4'
-const TOKEN_KEY = 'authToken'
+// 30 minutes d'inactivité -> verrouillage automatique (voir useIdleTimer ci-dessous).
+const IDLE_TIMEOUT_MS = 30 * 60 * 1000
 
 // `activeBoutiqueId` est maintenant un vrai id numérique de `Boutique` (API) —
 // `admin/page.tsx` le fixe désormais depuis `useBoutiques()` (réel), plus
@@ -43,6 +49,13 @@ interface AuthContextValue {
   login: (username: string, password: string) => Promise<Session>
   logout: () => void
   setActiveBoutique: (boutiqueId: number | null) => void
+  // Verrouillage par inactivité (30 min, voir useIdleTimer) — jamais une déconnexion : le jeton
+  // reste valide, seule l'INTERFACE se bloque tant que `unlock()` n'a pas confirmé le bon code.
+  isLocked: boolean
+  lock: () => void
+  // Rejette si le code (PIN ou mot de passe complet, voir UnlockSerializer côté backend) est
+  // incorrect — l'appelant (LockOverlay) lit `error.response.data` pour le message.
+  unlock: (pin: string) => Promise<void>
 }
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined)
@@ -52,11 +65,15 @@ const AuthContext = createContext<AuthContextValue | undefined>(undefined)
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<Session | null>(null)
   const [hydrated, setHydrated] = useState(false)
+  const [isLocked, setIsLocked] = useState(false)
+  const pathname = usePathname()
 
   useEffect(() => {
     try {
       const raw = localStorage.getItem(SESSION_KEY)
       if (raw) setSession(JSON.parse(raw))
+      // Restaure aussi l'état verrouillé — voir le commentaire sur LOCK_KEY plus haut.
+      setIsLocked(localStorage.getItem(LOCK_KEY) === '1')
     } catch {
       // session corrompue -> repart déconnecté
     }
@@ -73,10 +90,43 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, [session, hydrated])
 
+  useEffect(() => {
+    if (!hydrated) return
+    try {
+      if (isLocked) localStorage.setItem(LOCK_KEY, '1')
+      else localStorage.removeItem(LOCK_KEY)
+    } catch {
+      // stockage indisponible : le verrouillage reste valide pour cet onglet seulement
+    }
+  }, [isLocked, hydrated])
+
+  // Fonctions stables (useCallback) : passées à useIdleTimer, qui réinstallerait sinon ses
+  // écouteurs — et donc réinitialiserait le minuteur d'inactivité — à chaque rendu du Provider.
+  const lock = useCallback(() => setIsLocked(true), [])
+  const unlock = useCallback(async (pin: string) => {
+    // Ne fait AUCUNE hypothèse locale : le serveur seul valide le code (PIN ou mot de passe,
+    // voir UnlockSerializer) — lève une erreur si incorrect, laissée à l'appelant (LockOverlay).
+    await api.post('/users/unlock/', { pin })
+    setIsLocked(false)
+  }, [])
+
+  // 30 minutes sans la moindre activité -> verrouillage automatique — jamais actif tant que
+  // personne n'est connecté, ni une fois déjà verrouillé (rien à surveiller de plus à ce stade).
+  useIdleTimer(!!session && !isLocked, IDLE_TIMEOUT_MS, lock)
+
   const login = async (username: string, password: string): Promise<Session> => {
     const res = await api.post<LoginResponse>('/token/', { username: username.trim(), password })
     const data = res.data
     localStorage.setItem(TOKEN_KEY, data.token)
+    // Vide tout le cache TanStack Query AVANT d'installer la nouvelle session — sans ça, une
+    // requête encore "fraîche" (staleTime 5 min, voir queryClient.ts) faite par le compte
+    // PRÉCÉDENT reste servie telle quelle au nouveau compte tant qu'elle n'expire pas (ex: un
+    // OWNER qui se connecte juste après un SUPERADMIN verrait encore TOUTES les boutiques de la
+    // plateforme, pas seulement les siennes, jusqu'à ce que le cache expire de lui-même).
+    queryClient.clear()
+    // Une nouvelle connexion démarre toujours déverrouillée, même si l'onglet était resté
+    // verrouillé par un compte précédent sur ce même appareil.
+    setIsLocked(false)
 
     const next: Session =
       data.account_type === 'SUPERADMIN'
@@ -100,8 +150,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }
 
   const logout = () => {
+    // Invalide le jeton CÔTÉ SERVEUR (voir accounts/views.py::LogoutView) — jusqu'ici "se
+    // déconnecter" ne faisait que vider le stockage local, le jeton restait valide indéfiniment
+    // et rejouable par quiconque l'aurait intercepté. Appelée AVANT de retirer le jeton du
+    // localStorage (l'intercepteur de `api` le lit à cet instant précis pour l'en-tête
+    // Authorization) mais jamais attendue : la déconnexion locale ne doit jamais dépendre du
+    // réseau (l'utilisateur doit pouvoir se déconnecter même hors ligne).
+    api.post('/logout/').catch(() => {})
     localStorage.removeItem(TOKEN_KEY)
     setSession(null)
+    // Pas de session -> pas de verrou à garder (voir aussi useIdleTimer, désactivé sans session).
+    setIsLocked(false)
+    // Même raison qu'au login : ne laisse aucune donnée du compte qui se déconnecte traîner en
+    // cache pour le prochain qui se connectera sur cet appareil.
+    queryClient.clear()
   }
 
   // Réservé aux sessions owner/superadmin : "entrer" dans une boutique (id
@@ -112,8 +174,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <AuthContext.Provider value={{ session, hydrated, login, logout, setActiveBoutique }}>
+    <AuthContext.Provider value={{ session, hydrated, login, logout, setActiveBoutique, isLocked, lock, unlock }}>
       {children}
+      {/* Rendu ici (au-dessus de tout, y compris /admin) plutôt que dans AuthGate/AppShell —
+          ces derniers ne couvrent que les pages du shell employé/owner, jamais /admin.
+          `pathname !== '/login'` est CAPITAL : une session/verrou resté dans le localStorage
+          (jeton expiré côté serveur, ancien onglet jamais fermé proprement...) ne doit JAMAIS
+          pouvoir recouvrir l'écran de connexion et empêcher un nouvel essai — /login doit
+          toujours rester utilisable, quoi qu'il traîne en local. */}
+      {hydrated && session && isLocked && pathname !== '/login' && (
+        <LockOverlay session={session} onUnlock={unlock} onLogout={logout} />
+      )}
     </AuthContext.Provider>
   )
 }
