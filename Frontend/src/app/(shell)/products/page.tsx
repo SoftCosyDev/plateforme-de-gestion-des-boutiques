@@ -13,7 +13,7 @@ import {
 } from '@/lib/queries/products' // Couche de données réelle (Product -> Variant -> Stock).
 import { UNIT_LABELS } from '@/lib/types' // Libellés français des unités de vente.
 import BarcodeDisplayModal, { BarcodeItem } from '@/components/barcode-display-modal' // Affiche/imprime un ou plusieurs codes-barres.
-import BarcodeScannerModal from '@/components/barcode-scanner-modal' // Scan caméra — déjà utilisé à la caisse (cashier/page.tsx), réutilisé ici pour remplir le code-barres à la création.
+import BarcodeScannerModal, { ScannedItem } from '@/components/barcode-scanner-modal' // Scan caméra — déjà utilisé à la caisse (cashier/page.tsx), réutilisé ici pour remplir le code-barres à la création.
 import { useActiveBoutiqueId } from '@/lib/access' // Boutique "en cours" — pour lire son vocabulaire d'attributs de variante.
 import { useBoutique } from '@/lib/queries/boutiques' // Boutique.variant_attributes : défini par CHAQUE boutique dans /settings.
 
@@ -76,6 +76,11 @@ export default function ProductsPage() {
   // Index de la ligne de variante en attente d'un scan (null = scanner fermé) — un seul scanner
   // pour tout le formulaire, réutilisé pour n'importe quelle variante selon le bouton cliqué.
   const [scannerTargetIndex, setScannerTargetIndex] = useState<number | null>(null)
+  // Historique affiché à côté de la caméra (voir BarcodeScannerModal) — persiste tant que le
+  // formulaire produit reste ouvert, pas seulement pendant un seul cycle ouverture/fermeture du
+  // scanner : rouvrir la caméra pour la variante suivante doit encore montrer ce qui a déjà été
+  // scanné pour les précédentes. Réinitialisé à l'ouverture/fermeture du formulaire (voir plus bas).
+  const [scanHistory, setScanHistory] = useState<ScannedItem[]>([])
   const [adjustTarget, setAdjustTarget] = useState<{ product: ApiProduct; variant: ApiVariant } | null>(null)
   const [newQty, setNewQty] = useState('')
   const [adjustReason, setAdjustReason] = useState<StockMovementReason>('CORRECTION_MANUELLE')
@@ -117,6 +122,7 @@ export default function ProductsPage() {
     setImageFile(null)
     setImagePreview(null)
     setRemoveImageFlag(false)
+    setScanHistory([])
     setIsModalOpen(true)
   }
 
@@ -135,6 +141,7 @@ export default function ProductsPage() {
     // choisit une nouvelle, effacée s'il clique sur "Retirer" (voir handleRemoveImage).
     setImagePreview(p.image)
     setRemoveImageFlag(false)
+    setScanHistory([])
     setIsModalOpen(true)
   }
 
@@ -146,6 +153,7 @@ export default function ProductsPage() {
     setImageFile(null)
     setImagePreview(null)
     setRemoveImageFlag(false)
+    setScanHistory([])
   }
 
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -170,11 +178,30 @@ export default function ProductsPage() {
   const updateVariantRow = (index: number, patch: Partial<VariantFormRow>) =>
     setForm(f => ({ ...f, variants: f.variants.map((v, i) => i === index ? { ...v, ...patch } : v) }))
 
-  // Un seul scan suffit ici (contrairement à la caisse, qui reste ouverte pour enchaîner
-  // plusieurs articles) : on remplit le champ code-barres de LA variante visée puis on referme
-  // la caméra tout de suite — l'utilisateur n'a plus qu'à compléter le reste du formulaire.
+  // Un seul scan remplit LA variante visée, puis referme la caméra — contrairement à la Caisse,
+  // qui reste ouverte pour enchaîner plusieurs articles. L'historique, lui, survit à cette
+  // fermeture (état du formulaire, pas du scanner) : rouvrir la caméra pour la variante suivante
+  // montre encore ce qui a déjà été scanné pour les précédentes (voir scanHistory ci-dessus).
   const handleBarcodeScanned = (code: string) => {
-    if (scannerTargetIndex !== null) updateVariantRow(scannerTargetIndex, { barcode: code })
+    if (scannerTargetIndex !== null) {
+      const index = scannerTargetIndex
+      updateVariantRow(index, { barcode: code })
+      const row = form.variants[index]
+      const descriptor = row ? Object.values(row.attributes).filter(Boolean).join(' / ') : ''
+      // Un même code déjà utilisé sur UNE AUTRE variante du même formulaire finirait rejeté par
+      // le serveur (barcode unique) — mieux vaut le signaler ici, tout de suite, que de laisser
+      // l'utilisateur découvrir l'erreur seulement à l'enregistrement.
+      const duplicate = form.variants.some((v, i) => i !== index && v.barcode.trim() === code.trim())
+      const entry: ScannedItem = {
+        id: `${code}-${Date.now()}`,
+        label: code,
+        sublabel: duplicate
+          ? 'Code déjà utilisé sur une autre variante de ce produit !'
+          : (descriptor || `Variante ${index + 1}`),
+        status: duplicate ? 'error' : 'success',
+      }
+      setScanHistory(h => [entry, ...h].slice(0, 30))
+    }
     setScannerTargetIndex(null)
   }
 
@@ -708,6 +735,7 @@ export default function ProductsPage() {
         isOpen={scannerTargetIndex !== null}
         onClose={() => setScannerTargetIndex(null)}
         onScan={handleBarcodeScanned}
+        scannedItems={scanHistory}
       />
 
       {adjustTarget && (

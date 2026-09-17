@@ -9,7 +9,7 @@ import { Badge } from '@/components/ui/badge' // Petite étiquette stylée.
 import { ApiProduct, ApiVariant, findVariantByBarcode, flattenSellableVariants, searchSellableVariants, useProducts, useCategories, variantLabel } from '@/lib/queries/products' // Catalogue réel.
 import { useCustomers, useCreateCustomer } from '@/lib/queries/customers' // Clients réels (Phase 3).
 import { PaymentMode, useCreateSale } from '@/lib/queries/sales' // Encaissement réel.
-import BarcodeScannerModal from '@/components/barcode-scanner-modal' // Scan caméra, backend-agnostic.
+import BarcodeScannerModal, { ScannedItem } from '@/components/barcode-scanner-modal' // Scan caméra, backend-agnostic.
 
 // Une ligne du panier — référence toujours une VARIANTE (jamais un produit directement),
 // puisque c'est elle que la vente enregistre côté serveur (voir queries/sales.ts).
@@ -32,6 +32,11 @@ export default function CashierPage() {
 
   const [cart, setCart] = useState<CartItem[]>([])
   const [isScannerOpen, setIsScannerOpen] = useState(false)
+  // Historique affiché à côté de la caméra (voir BarcodeScannerModal) — persiste tant que la
+  // vente en cours n'est pas terminée/annulée (voir resetSale), pas seulement pendant qu'un seul
+  // scanner reste ouvert : rouvrir la caméra plus tard dans la même vente doit encore montrer ce
+  // qui a déjà été scanné.
+  const [scanHistory, setScanHistory] = useState<ScannedItem[]>([])
   const [searchTerm, setSearchTerm] = useState('')
   const [scanFeedback, setScanFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null)
   const [activeCategory, setActiveCategory] = useState<number | null>(null)
@@ -83,19 +88,27 @@ export default function CashierPage() {
     })
   }
 
+  // Ajoute une ligne en tête de l'historique (plus récent en premier) — plafonné à 30 lignes,
+  // largement suffisant pour une vente au comptoir et évite une liste qui grossit sans fin.
+  const logScan = (item: Omit<ScannedItem, 'id'>) =>
+    setScanHistory(h => [{ id: `${Date.now()}-${Math.random()}`, ...item }, ...h].slice(0, 30))
+
   const handleScan = (barcode: string) => {
     const match = findVariantByBarcode(products, barcode)
     if (!match) {
       setScanFeedback({ type: 'error', message: `Produit inconnu : ${barcode}` })
+      logScan({ label: barcode, sublabel: 'Code inconnu', status: 'error' })
       return
     }
     const { product, variant, label } = match
     if (variant.stock.availableQty <= 0) {
       setScanFeedback({ type: 'error', message: `${product.name} — rupture de stock` })
+      logScan({ label: `${product.emoji} ${label}`, sublabel: 'Rupture de stock', status: 'error' })
       return
     }
     addToCart(product, variant)
     setScanFeedback({ type: 'success', message: `${product.emoji} ${label} ajouté` })
+    logScan({ label: `${product.emoji} ${label}`, sublabel: 'Ajouté au panier', status: 'success' })
   }
 
   const updateQty = (variantId: number, delta: number) => {
@@ -109,6 +122,7 @@ export default function CashierPage() {
 
   const resetSale = () => {
     setCart([])
+    setScanHistory([])
     setCustomerName('')
     setCustomerPhone('')
     setPaymentMode('cash')
@@ -404,7 +418,7 @@ export default function CashierPage() {
         </div>
       </Card>
 
-      <BarcodeScannerModal isOpen={isScannerOpen} onClose={() => setIsScannerOpen(false)} onScan={handleScan} />
+      <BarcodeScannerModal isOpen={isScannerOpen} onClose={() => setIsScannerOpen(false)} onScan={handleScan} scannedItems={scanHistory} />
     </div>
   )
 }

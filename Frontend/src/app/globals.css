@@ -83,12 +83,13 @@
 }
 
 @theme inline {
-  /* Police demandée pour toute l'app : "Times New Roman" est une police SYSTÈME (jamais chargée
-     via next/font/google, voir app/layout.tsx où l'ancien Inter a été retiré) — Times/serif en
-     repli si elle est absente de l'appareil (Linux notamment). --font-mono reste JetBrains Mono,
-     conservée uniquement pour les usages fonctionnels (codes-barres, SKU) qui ont besoin d'une
-     chasse fixe, pas d'un choix esthétique. */
-  --font-sans: 'Times New Roman', Times, serif;
+  /* Police sans-serif SYSTÈME (jamais chargée via next/font/google, voir app/layout.tsx) —
+     Times New Roman (choix précédent) remplacé à la demande. Empile les polices sans-serif
+     natives de chaque OS (Segoe UI/Windows, San Francisco/macOS via -apple-system, Roboto/
+     Android...) plutôt qu'un seul nom, pour un rendu net sans dépendre d'un fichier de police
+     téléchargé. --font-mono reste JetBrains Mono, conservée uniquement pour les usages
+     fonctionnels (codes-barres, SKU) qui ont besoin d'une chasse fixe, pas d'un choix esthétique. */
+  --font-sans: ui-sans-serif, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
   --font-mono: var(--font-jetbrains-mono), ui-monospace, monospace;
   /* Échelle de taille de texte agrandie d'environ 12-15% par rapport aux valeurs par défaut de
      Tailwind (text-xs=12px, text-sm=14px, text-base=16px...) — la police d'origine se lisait trop
