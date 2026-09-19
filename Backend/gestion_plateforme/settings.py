@@ -325,3 +325,16 @@ else:
     # Pas de clés Cloudinary : les fichiers uploadés vont sur le disque local du serveur de dev.
     MEDIA_URL = '/media/'
     MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
+
+# ── Journalisation ────────────────────────────────────────────────────────────
+# Sans ceci, avec DEBUG=False, une erreur 500 ne laisse AUCUNE trace dans les logs de l'hébergeur
+# (Render) : seule la ligne d'accès "POST ... 500" apparaît, jamais la cause. On envoie donc les
+# erreurs de requête (django.request) avec leur trace complète vers la sortie standard.
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'handlers': {'console': {'class': 'logging.StreamHandler'}},
+    'loggers': {
+        'django.request': {'handlers': ['console'], 'level': 'ERROR', 'propagate': False},
+    },
+}
