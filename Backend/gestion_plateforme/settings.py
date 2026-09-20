@@ -319,6 +319,10 @@ if _USE_CLOUDINARY:
         'CLOUD_NAME': os.getenv('CLOUDINARY_CLOUD_NAME'),
         'API_KEY': os.getenv('CLOUDINARY_API_KEY'),
         'API_SECRET': os.getenv('CLOUDINARY_API_SECRET'),
+        # Dossier Cloudinary propre à CETTE plateforme : sans PREFIX, le paquet range tout sous
+        # "media/" (valeur de MEDIA_URL), ce qui mélangerait les images avec celles d'un autre
+        # projet hébergé sur le même compte Cloudinary (ex: SoftCosy).
+        'PREFIX': 'plateforme-idrissou/',
     }
     MEDIA_URL = '/media/'
 else:
